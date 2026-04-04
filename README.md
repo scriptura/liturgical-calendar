@@ -22,6 +22,14 @@ Cette séparation stricte offre des garanties de performance et de stabilité ex
 - **Empreinte mémoire minimale** : L'Engine fonctionne sans allocation mémoire dynamique (`no_alloc`) et sans recourir à la bibliothèque standard du système (`no_std`).
 - **Portabilité universelle** : Conçu avec une interface C native (FFI), le moteur peut être embarqué partout : serveurs, applications mobiles iOS/Android, systèmes embarqués ou directement dans le navigateur via WebAssembly.
 
+## 📝 Approche Data-First & Contrat YAML
+
+Le pipeline repose sur une architecture **Data-Driven** stricte : la source de vérité du domaine n'est pas codée en dur, mais modélisée sous forme de données. Le droit liturgique (calendriers universel, nationaux et diocésains) est intégralement défini dans des fichiers YAML.
+
+- **Source de Vérité Indépendante** : Les entités liturgiques (saints, préséances, règles de transfert) sont déclarées via un schéma YAML qui agit comme un contrat de données amont.
+- **Validation AOT (Ahead-Of-Time)** : L'intégralité du corpus YAML est validée formellement lors de la compilation par la Forge. Les cycles de dépendance, les collisions de préséance ou les erreurs de dates provoquent un échec immédiat du build, garantissant mathématiquement qu'aucune erreur de configuration ne peut atteindre le runtime.
+- **Évolutivité Zéro-Code** : Le domaine liturgique est vivant. Lorsqu'une nouvelle règle est édictée ou qu'un saint est canonisé, il suffit de mettre à jour le fichier YAML correspondant. La Forge ingère le YAML mis à jour et génère un nouveau dataset binaire `.kald`. L'Engine consomme ce nouveau fichier et reflète la mise à jour instantanément, sans nécessiter la moindre modification ou recompilation du code de l'application hôte.
+
 ## ⏱️ Couverture Temporelle
 
 Le calendrier pré-compilé couvre de manière exhaustive et déterministe la période allant de **1969** (réforme du calendrier romain) à **2399**.
