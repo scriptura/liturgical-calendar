@@ -1,0 +1,22 @@
+[package]
+name        = "liturgical-calendar-core"
+version     = "0.1.0"
+edition     = "2021"
+rust-version = "1.75"
+description = "Engine liturgical — projecteur de mémoire O(1) sur .kald (no_std, no_alloc)"
+license     = "MIT"
+
+[lib]
+# crate-type "lib" (rlib) : utilisé par cargo test et les dépendances Rust internes.
+# Pour produire l'archive statique C (.a) :
+#   cargo rustc -p liturgical-calendar-core --release -- --crate-type staticlib
+crate-type = ["lib"]
+
+[dependencies]
+# Dérogation INV-W1 : sha2 v0.10+ (RustCrypto), no_std/no_alloc garanti.
+# default-features = false désactive toute dépendance vers std ou alloc.
+# Vérification : cargo tree -p liturgical-calendar-core → sha2 uniquement.
+sha2 = { version = "0.10", default-features = false }
+
+[features]
+gen-headers = []
