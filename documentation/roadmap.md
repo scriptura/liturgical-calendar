@@ -1,7 +1,7 @@
 # Roadmap de Développement : Liturgical Calendar v2.0
 
-**Version** : 2.0  
-**Date de Révision** : 2026-03-08  
+**Version** : 2.0.1  
+**Date de Révision** : 2026-04-05  
 **Méthodologie** : 3 jalons, chacun produisant un livrable binaire validable indépendamment  
 **Critères de Succès** : Conformité binaire Forge↔Engine · SHA-256 cross-platform · Fuzzing · CI 4 cibles
 
@@ -27,11 +27,23 @@
 
 **Fichier :** `liturgical-calendar-core/src/types.rs`
 
-Implémenter `Precedence`, `Nature`, `Color`, `Season` conformément aux §4.1–4.4 de la spec.
+Implémenter `Precedence`, `Nature`, `Color`, `LiturgicalPeriod` conformément aux §4.1–4.4 de la spec.
 
 - `#[repr(u8)]` sur chaque enum
 - `try_from_u8(val: u8) -> Result<Self, DomainError>` pour chaque type
 - `DomainError` : `Copy`, pas de `String`, types primitifs uniquement
+- Traits dérivés obligatoires par enum :
+
+| Enum               | Traits dérivés obligatoires                                | Justification                        |
+| ------------------ | ---------------------------------------------------------- | ------------------------------------ |
+| `Precedence`       | `Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash` | Axe de tri principal, déjà dans spec |
+| `Nature`           | `Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash` | Champ de ResolvedFeast (BTree\*)     |
+| `Color`            | `Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash` | Champ de ResolvedFeast (BTree\*)     |
+| `LiturgicalPeriod` | `Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash` | Champ de ResolvedFeast (BTree\*)     |
+
+Note : `PartialOrd`/`Ord` sur `Nature`, `Color`, `LiturgicalPeriod` sont dérivés automatiquement
+par discriminant (`repr(u8)`) et n'ont aucune signification liturgique — ils satisfont
+uniquement la contrainte de typage des collections ordonnées.
 
 **Tests :**
 
@@ -100,11 +112,18 @@ pub struct CalendarEntry {
 }
 
 impl CalendarEntry {
+    /// Entrée nulle : tous les champs à zéro. `const fn` — no_alloc safe.
+    pub const fn zeroed() -> Self;
+
+    pub fn is_padding(&self) -> bool { self.primary_id == 0 }
     pub fn precedence(&self) -> Result<Precedence, DomainError>;
     pub fn color(&self)      -> Result<Color, DomainError>;
-    pub fn season(&self)     -> Result<Season, DomainError>;
+    pub fn liturgical_period(&self) -> Result<LiturgicalPeriod, DomainError>;
     pub fn nature(&self)     -> Result<Nature, DomainError>;
-    pub fn is_padding(&self) -> bool { self.primary_id == 0 }
+}
+
+impl Default for CalendarEntry {
+    fn default() -> Self { Self::zeroed() }
 }
 ```
 
@@ -112,7 +131,7 @@ Extraction des champs depuis `flags` :
 
 - `Precedence = flags & 0x000F`
 - `Color = (flags >> 4) & 0x000F`
-- `Season = (flags >> 8) & 0x0007`
+- `LiturgicalPeriod = (flags >> 8) & 0x0007`
 - `Nature = (flags >> 11) & 0x0007`
 
 **Tests :**
@@ -120,9 +139,25 @@ Extraction des champs depuis `flags` :
 - `assert_eq!(size_of::<CalendarEntry>(), 8)` — stride constant, critique pour l'indexation
 - `assert_eq!(offset_of!(CalendarEntry, flags), 4)` — alignement naturel u16 sur offset pair
 - `assert_eq!(offset_of!(CalendarEntry, secondary_count), 6)`
-- Roundtrip flags encode/decode pour toutes les combinaisons (Precedence × Nature × Color × Season)
+- Roundtrip flags encode/decode pour toutes les combinaisons (Precedence × Nature × Color × LiturgicalPeriod)
 - Padding Entry : `primary_id = 0`, `secondary_count = 0`, `is_padding() == true`
 - Reserved non-nul : toléré en lecture (l'Engine ne valide pas `_reserved` au niveau entrée)
+
+```rust
+#[test]
+fn zeroed_is_padding() {
+    let e = CalendarEntry::zeroed();
+    assert!(e.is_padding());
+    assert_eq!(e.flags, 0);
+    assert_eq!(e.secondary_count, 0);
+    assert_eq!(e._reserved, 0);
+}
+
+#[test]
+fn default_equals_zeroed() {
+    assert_eq!(CalendarEntry::default(), CalendarEntry::zeroed());
+}
+```
 
 ---
 
@@ -172,6 +207,22 @@ Générer `kal_engine.h` exposant :
 
 Vérification : compilation d'un programme C minimal utilisant `kal_read_entry`.
 
+**Feature `gen-headers` — déclaration obligatoire :**
+
+`build.rs` conditionne l'invocation de cbindgen via `#[cfg(feature = "gen-headers")]`. Cette feature doit être déclarée explicitement dans `Cargo.toml`, même sans dépendance associée — Cargo 1.75+ traite `unexpected_cfg` comme erreur sous `-D warnings` :
+
+```toml
+# liturgical-calendar-core/Cargo.toml
+[features]
+gen-headers = []
+```
+
+cbindgen reste une `build-dependency` optionnelle, non installée par défaut. La génération de `kal_engine.h` est une étape **manuelle, hors CI standard** :
+
+```bash
+cargo build -p liturgical-calendar-core --features gen-headers
+```
+
 ---
 
 ## Jalon 2 — The Compiler
@@ -184,6 +235,34 @@ Vérification : compilation d'un programme C minimal utilisant `kal_read_entry`.
 
 ---
 
+### 2.0 Invariants de développement Jalon 2
+
+Ces contraintes s'appliquent à l'implémentation de la Forge. Elles complètent les invariants
+architecturaux INV-W1–W9 (spec §0.2).
+
+**INV-FORGE-LINT — Politique lint Forge en Jalon 2**
+
+```rust
+// liturgical-calendar-forge/src/lib.rs
+#![allow(missing_docs)] // Activé en Jalon 3 (INV-W7)
+```
+
+Activer `warn(missing_docs)` prématurément génère 100+ warnings masquant les erreurs réelles.
+
+**INV-FORGE-MOVE — Ownership dans le pipeline**
+
+Les méthodes de pipeline consomment leurs entrées par move. Dans les tests unitaires,
+utiliser `.clone()` avant tout appel si la valeur est lue dans l'assertion suivante (INV-W8).
+
+**INV-FORGE-DERIVE — Traits obligatoires sur les enums de domaine Forge**
+
+Les enums `Nature`, `Color`, `LiturgicalPeriod` dans `registry.rs` (côté Forge) doivent dériver
+`PartialOrd, Ord`. Ces enums sont distincts de leurs homologues du Core — ils peuvent
+évoluer indépendamment mais doivent satisfaire les mêmes contraintes de trait
+(voir §1.1 de cette roadmap, Patch 2).
+
+---
+
 ### 2.1 Rule Parsing (Étape 1)
 
 **Fichier :** `liturgical-calendar-forge/src/parsing.rs`
@@ -192,6 +271,22 @@ Vérification : compilation d'un programme C minimal utilisant `kal_read_entry`.
 - Construction du `FeastRegistry` (BTreeMap)
 - Application des validations V1–V6 (§10 spec) — erreurs fatales
 - Normalisation : `normalize_color`, `normalize_nature` (allocation `String` autorisée en Forge)
+
+**Convention champs serde réservés :**
+
+Tout champ désérialisé depuis le YAML mais non consommé dans ce jalon est préfixé `_`
+dans le struct Rust avec `#[serde(rename = "clé_yaml")]`. Exemple pour `YamlFile` :
+
+```rust
+#[serde(rename = "from")]
+_from: Option<u16>,  // réservé Jalon 3
+
+#[serde(rename = "to")]
+_to: Option<u16>,    // réservé Jalon 3
+```
+
+Sans cela : warnings `dead_code` compilateur. Avec `#[allow(dead_code)]` global : masquage
+des vrais dead code. La convention `_` + `rename` est la solution chirurgicale.
 
 **Test :** YAML minimal (1 fête universelle, 1 fête nationale) → `FeastRegistry` construit sans erreur.
 
@@ -247,8 +342,8 @@ Vérification : compilation d'un programme C minimal utilisant `kal_read_entry`.
 **Fichier :** `liturgical-calendar-forge/src/packing.rs`
 
 ```rust
-pub fn encode_flags(p: Precedence, c: Color, s: Season, n: Nature) -> u16 {
-    (p as u16) | ((c as u16) << 4) | ((s as u16) << 8) | ((n as u16) << 11)
+pub fn encode_flags(p: Precedence, c: Color, lp: LiturgicalPeriod, n: Nature) -> u16 {
+    (p as u16) | ((c as u16) << 4) | ((lp as u16) << 8) | ((n as u16) << 11)
 }
 ```
 
@@ -261,21 +356,40 @@ pub fn encode_flags(p: Precedence, c: Color, s: Season, n: Nature) -> u16 {
 **Test de conformité Jalon 2 :**
 
 ```rust
+use liturgical_calendar_core::entry::CalendarEntry;
+use liturgical_calendar_core::ffi::{kal_read_entry, kal_validate_header, KAL_ENGINE_OK};
+use liturgical_calendar_forge::forge_year;
+use std::ptr::null_mut;
+
 #[test]
 fn conformity_2025() {
-    let kald = forge_year(2025); // produit le .kald pour 2025 uniquement
-    assert_eq!(kal_validate_header(&kald, kald.len(), null_mut()), KAL_ENGINE_OK);
-    // Vérifier Pâques 2025
-    let mut entry = CalendarEntry::zeroed();
-    let rc = kal_read_entry(&kald, kald.len(), 2025, 110, &mut entry); // doy Pâques
+    let kald = forge_year(2025).expect("forge_year(2025) doit réussir");
+
+    // Validation structurelle header + SHA-256
+    let rc = unsafe { kal_validate_header(kald.as_ptr(), kald.len(), null_mut()) };
     assert_eq!(rc, KAL_ENGINE_OK);
-    assert_ne!(entry.primary_id, 0); // non-padding
-    // Vérifier Padding Entry
-    let rc = kal_read_entry(&kald, kald.len(), 2025, 59, &mut entry);
+
+    // Pâques 2025 : 20 avril = MONTH_STARTS[3] + 19 = 91 + 19 = doy 110
+    let mut e = CalendarEntry::zeroed();
+    let rc = unsafe { kal_read_entry(kald.as_ptr(), kald.len(), 2025, 110, &mut e) };
     assert_eq!(rc, KAL_ENGINE_OK);
-    assert_eq!(entry.primary_id, 0); // Padding
+    assert_ne!(e.primary_id, 0, "doy=110 doit contenir Pâques");
+
+    // Padding Entry : 2025 non-bissextile → doy=59 vide
+    let mut e = CalendarEntry::zeroed();
+    let rc = unsafe { kal_read_entry(kald.as_ptr(), kald.len(), 2025, 59, &mut e) };
+    assert_eq!(rc, KAL_ENGINE_OK);
+    assert_eq!(e.primary_id, 0, "doy=59 doit être Padding Entry pour 2025");
 }
 ```
+
+Points notables :
+
+- `unsafe` bloc explicite (les fonctions FFI sont `unsafe extern "C"`)
+- `kald.as_ptr()` / `kald.len()` au lieu de `&kald` (signature C-ABI : `*const u8, usize`)
+- Imports complets (le test est dans `liturgical-calendar-forge/tests/` avec dev-dep Core)
+- `null_mut()` typé (pas `null()`)
+- `e` réinitialisé entre les deux lectures (out-param réutilisé)
 
 ---
 
