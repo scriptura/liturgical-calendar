@@ -1,4 +1,4 @@
-# ADR : Pivot vers l'Architecture AOT-Only (v2.0)
+# ADR : Pivot vers l'Architecture AOT-Only (v1.x -> v2.0)
 
 **Statut** : Adopté / Remplace l'architecture hybride v1.x
 

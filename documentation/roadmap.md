@@ -267,28 +267,17 @@ Les enums `Nature`, `Color`, `LiturgicalPeriod` dans `registry.rs` (côté Forge
 
 **Fichier :** `liturgical-calendar-forge/src/parsing.rs`
 
+- Découverte récursive des fichiers YAML depuis `corpus_root` via `CompilationTarget` (liturgical-scheme.md §5.3)
+- Tri lexicographique des fichiers par répertoire avant ingestion (INV-FORGE-1)
+- Dérivation du scope et de la region depuis le chemin — validation de cohérence path ↔ contenu (`ParseError::ScopePathMismatch`)
 - Ingestion YAML → structures Rust intermédiaires (`FeastVersionDef`)
 - Construction du `FeastRegistry` (BTreeMap)
 - Application des validations V1–V6 (§10 spec) — erreurs fatales
 - Normalisation : `normalize_color`, `normalize_nature` (allocation `String` autorisée en Forge)
 
-**Convention champs serde réservés :**
+**Convention champs serde réservés :** voir §2.1 invariant de la roadmap — champs YAML futurs préfixés `_` avec `#[serde(rename = "clé_yaml")]`.
 
-Tout champ désérialisé depuis le YAML mais non consommé dans ce jalon est préfixé `_`
-dans le struct Rust avec `#[serde(rename = "clé_yaml")]`. Exemple pour `YamlFile` :
-
-```rust
-#[serde(rename = "from")]
-_from: Option<u16>,  // réservé Jalon 3
-
-#[serde(rename = "to")]
-_to: Option<u16>,    // réservé Jalon 3
-```
-
-Sans cela : warnings `dead_code` compilateur. Avec `#[allow(dead_code)]` global : masquage
-des vrais dead code. La convention `_` + `rename` est la solution chirurgicale.
-
-**Test :** YAML minimal (1 fête universelle, 1 fête nationale) → `FeastRegistry` construit sans erreur.
+**Test :** corpus atomique minimal (1 fichier `universale/sanctorale/`, 1 fichier `nationalia/{ISO}/sanctorale/`) → `FeastRegistry` construit sans erreur, scope et region correctement déduits du chemin.
 
 ---
 

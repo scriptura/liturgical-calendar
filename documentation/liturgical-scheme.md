@@ -3,8 +3,8 @@
 **Statut** : Canonique / Source de Vérité YAML  
 **Scope** : `liturgical-calendar-forge` — Étapes 1 (Rule Parsing) et 2 (Canonicalization)  
 **Référence** : `specification.md` v2.0  
-**Date de Révision** : 2026-03-08  
-**Version** : 1.0
+**Date de Révision** : 2026-04-05  
+**Version** : 1.1
 
 ---
 
@@ -31,35 +31,102 @@ YAML (slug, precedence, from…)
 
 ---
 
-## 1. Structure d'un Fichier YAML
+## 1. Organisation du Corpus sur Disque
 
-Un fichier YAML de configuration liturgique est identifié par son **scope** (`universal`, `national`, `diocesan`) et, pour les scopes non-universels, par un code de région ou d'entité.
+### 1.1 Principe : 1 Slug = 1 Fichier
+
+Chaque fête liturgique est décrite dans un **fichier YAML indépendant**, nommé d'après son slug. Cette atomicité garantit :
+
+- Des diffs Git par fête (lisibilité, code review)
+- Un corpus partiel valide (un diocèse peut ne livrer que ses propres fichiers)
+- L'absence de collision de slugs au niveau du système de fichiers (deux fichiers de même nom dans le même répertoire est une impossibilité FS)
+
+### 1.2 Hiérarchie des Répertoires
 
 ```
-config/
-├── universal.yaml
-├── national-FR.yaml
-├── national-PL.yaml
-└── diocesan-PARIS.yaml
+data/
+├── universale/
+│   ├── temporale/          ← Proprium de Tempore : fêtes à date mobile  (category = 0)
+│   │   ├── pascha.yaml
+│   │   ├── ascensio_domini.yaml
+│   │   ├── pentecostes.yaml
+│   │   ├── feria_iv_cinerum.yaml
+│   │   ├── dominica_in_palmis.yaml
+│   │   └── ...
+│   └── sanctorale/         ← Sanctorale universale : fêtes à date fixe  (category ≥ 1)
+│       ├── nativitas_domini.yaml
+│       ├── assumptio_bmv.yaml
+│       ├── omnium_sanctorum.yaml
+│       └── ...
+├── nationalia/
+│   └── {ISO}/              ← Code ISO 3166-1 alpha-2 (ex : FR, PL, DE)
+│       ├── temporale/      ← Proprium de Tempore national (peu fréquent)
+│       └── sanctorale/     ← Saints propres et surcharges nationales
+│           └── {slug}.yaml
+└── dioecesana/
+    └── {ID}/               ← Identifiant diocésain (ex : PARIS, LYON)
+        ├── temporale/
+        └── sanctorale/
+            └── {slug}.yaml
 ```
 
-### 1.1 En-tête de Fichier
+**Règles structurelles :**
+
+- `temporale/` accueille les fêtes déclarées avec un bloc `mobile` (anchor + offset). C'est le Proprium de Tempore — le cycle pascal et ses dépendances.
+- `sanctorale/` accueille les fêtes déclarées avec un bloc `date` (fixe). C'est le cycle annuel des saints et des solennités fixes.
+- La correspondance répertoire ↔ `category` est **documentaire, pas normative**. Le champ `category` reste déclaré explicitement dans chaque fichier YAML — un diocèse peut utiliser des catégories 2 ou 3 dans son `sanctorale/`.
+- Un fichier situé dans `nationalia/FR/sanctorale/nativitas_domini.yaml` est une **surcharge nationale** du slug `nativitas_domini` universel. Aucune redéclaration de `date` n'est requise si la date est héritée du scope universel.
+
+### 1.3 Dérivation du Scope et de la Region depuis le Chemin
+
+Le **scope** et la **region** sont déduits du chemin du fichier. Ils ne sont **pas** répétés dans l'en-tête YAML — supprimer cette redondance est l'un des bénéfices de l'approche atomique.
+
+| Chemin                                 | Scope déduit | Region déduite |
+| -------------------------------------- | ------------ | -------------- |
+| `data/universale/**/{slug}.yaml`       | `universal`  | `null`         |
+| `data/nationalia/{ISO}/**/{slug}.yaml` | `national`   | `{ISO}`        |
+| `data/dioecesana/{ID}/**/{slug}.yaml`  | `diocesan`   | `{ID}`         |
+
+La Forge valide la cohérence path ↔ contenu lors de l'ingestion. Un fichier dont l'en-tête déclare explicitement un scope ou une region **contradictoire** avec son chemin est rejeté avec `ParseError::ScopePathMismatch { path, declared_scope }`.
+
+### 1.4 Ordre d'Ingestion (INV-FORGE-1)
+
+La Forge ingère les fichiers dans l'ordre suivant, sans exception :
+
+```
+1. data/universale/temporale/    — triés lexicographiquement par nom de fichier
+2. data/universale/sanctorale/   — triés lexicographiquement par nom de fichier
+3. data/nationalia/{ISO}/temporale/   — si applicable, tri lex.
+4. data/nationalia/{ISO}/sanctorale/  — si applicable, tri lex.
+5. data/dioecesana/{ID}/temporale/    — si applicable, tri lex.
+6. data/dioecesana/{ID}/sanctorale/   — si applicable, tri lex.
+```
+
+Le nommage slug (latin snake_case) garantit que l'ordre lexicographique des noms de fichiers est déterministe et reproductible. `fs::read_dir` n'étant pas ordonné, la Forge collecte les chemins, les trie, puis les ingère — identique à INV-FORGE-1 de la spec.
+
+### 1.5 Format d'un Fichier Atomique
+
+L'en-tête de fichier est allégé : `scope` et `region` sont déduits du chemin (§1.3). `format_version` reste obligatoire pour la détection de schéma incompatible.
 
 ```yaml
-# En-tête obligatoire — tous les champs sont requis
-scope: universal # universal | national | diocesan
-region:
-  ~ # null pour universal ; code ISO 3166-1 alpha-2 pour national (ex: FR) ;
-  # identifiant diocésain pour diocesan (ex: PARIS)
-from: 1969 # Année de validité minimale de ce fichier (inclusive)
-to: ~ # null = indéfini ; integer = borne inclusive
-format_version: 1 # Version du schéma YAML (ce document = version 1)
+format_version: 1 # Obligatoire — détection UnsupportedSchemaVersion
+slug: nativitas_domini
+category: 0 # Sous-espace FeastID — bits [13:12] — voir §2.2
+date: # OU mobile: — exactement l'un des deux
+  month: 12
+  day: 25
 
-feasts: # Liste des définitions de fêtes — voir §2
-  - ...
+history:
+  - from: 1969
+    to: ~
+    title: "In Nativitate Domini"
+    precedence: 1
+    nature: sollemnitas
+    color: albus
+    season: tempus_nativitatis # Optionnel — voir §2.3
 ```
 
-> **`format_version`** : permet à la Forge de détecter un fichier de schéma incompatible et de le rejeter avec `ParseError::UnsupportedSchemaVersion` avant toute tentative de traitement.
+> **Surcharge partielle (scope national/diocésain) :** un fichier de surcharge peut omettre le bloc `date`/`mobile` si la temporalité est héritée du scope universel. Il ne déclare que les champs `history` qui diffèrent. La Forge fusionne les blocs `history` selon les règles de §5.2.
 
 ---
 
@@ -74,8 +141,7 @@ Chaque entrée dans la liste `feasts` définit une fête liturgique. Elle compor
 feasts:
   - slug: <string> # Identifiant stable — voir §2.1
     id: <u16> # Optionnel — voir §2.2
-    scope: <string> # universal | national | diocesan
-    region: <string> # Requis si scope != universal ; code ISO 3166-1 alpha-2
+    # scope et region : déduits du chemin du fichier (§1.3) — non répétés ici
     category: <0–3> # Sous-espace FeastID — bits [13:12], 4 valeurs — voir §2.2
 
     # Temporalité — exactement UN des deux blocs suivants doit être présent
@@ -387,12 +453,12 @@ Le bit [15:14] est encodé dans les 2 bits supérieurs du FeastID u16. Le bit [1
 La Forge fusionne les fichiers YAML dans l'ordre de priorité suivant, du moins prioritaire au plus prioritaire :
 
 ```
-universal.yaml  <  national-<REGION>.yaml  <  diocesan-<ID>.yaml
+universale/  <  nationalia/{ISO}/  <  dioecesana/{ID}/
 ```
 
 **Règle de résolution des collisions (même slug) :**
 
-Le scope le plus local l'emporte. Si `diocesan-PARIS.yaml` et `national-FR.yaml` définissent tous deux le slug `nativitas_domini`, la version diocésaine est retenue et la version nationale ignorée pour la génération du dataset Paris.
+Le scope le plus local l'emporte. Si `dioecesana/PARIS/sanctorale/nativitas_domini.yaml` et `nationalia/FR/sanctorale/nativitas_domini.yaml` définissent tous deux le slug `nativitas_domini`, la version diocésaine est retenue et la version nationale ignorée pour la génération du dataset Paris.
 
 **Règle de résolution des collisions (même DOY, slugs différents) :**
 
@@ -403,34 +469,82 @@ Deux fêtes de scopes différents peuvent tomber le même jour. La Forge appliqu
 Un fichier national ou diocésain peut ne redéfinir que certains champs d'une fête universelle (ex: un titre localisé, une `precedence` relevée). La Forge fusionne les blocs `history` — les entrées du scope local écrasent, pour les années couvertes, les entrées du scope universel.
 
 ```yaml
-# national-FR.yaml — surcharge du titre de la Nativité pour les années 1969-présent
-- slug: nativitas_domini
-  scope: national
-  region: FR
-  # Pas de date/mobile : héritée du universal.yaml
-  history:
-    - from: 1969
-      to: ~
-      title: "Nativité du Seigneur" # Titre localisé en français
-      precedence: 1 # Inchangé
-      nature: sollemnitas # Inchangé
-      color: albus # Inchangé
+# data/nationalia/FR/sanctorale/nativitas_domini.yaml
+# scope=national, region=FR déduits du chemin
+
+format_version: 1
+slug: nativitas_domini
+# Pas de date/mobile : héritée du fichier universale/sanctorale/nativitas_domini.yaml
+category: 0
+history:
+  - from: 1969
+    to: ~
+    title: "Nativité du Seigneur" # Titre localisé en français
+    precedence: 1 # Inchangé
+    nature: sollemnitas # Inchangé
+    color: albus # Inchangé
 ```
 
-### 5.3 Fichiers de Configuration Attendus par la Forge
+### 5.3 Interface de Configuration de la Forge
 
-La Forge accepte une liste ordonnée de fichiers YAML. L'ordre est celui de la fusion (du moins au plus local). Un fichier absent d'un scope intermédiaire n'est pas une erreur.
+Avec l'approche atomique, la Forge reçoit un répertoire racine (`corpus_root`) et une cible de compilation (`CompilationTarget`). Elle découvre elle-même les fichiers à ingérer en parcourant la hiérarchie de §1.2 dans l'ordre de §1.4.
 
 ```rust
 // Interface Forge — configuration de la session de compilation
 struct ForgeSession {
-    universal: PathBuf,              // Requis
-    national: Option<PathBuf>,       // Optionnel
-    diocesan: Option<PathBuf>,       // Optionnel
-    output: PathBuf,                 // Chemin de sortie .kald
-    range: RangeInclusive<u16>,      // Ex : 1969..=2399
+    corpus_root: PathBuf,          // Racine du corpus : contient universale/, nationalia/, dioecesana/
+    target:      CompilationTarget, // Portée de la compilation
+    output:      PathBuf,          // Chemin de sortie .kald
+    range:       RangeInclusive<u16>, // Ex : 1969..=2399
+}
+
+enum CompilationTarget {
+    Universal,                     // Calendarium Generale uniquement
+    National  { region: String },  // Universal + national/{region}
+    Diocesan  { region: String, diocese: String }, // Universal + national + dioecesana/{diocese}
 }
 ```
+
+**Algorithme de découverte des fichiers :**
+
+```
+fn discover_files(root: &Path, target: &CompilationTarget) -> Vec<PathBuf> {
+    let mut files = vec![];
+
+    // 1. Universale — toujours chargé
+    collect_yaml_sorted(root / "universale" / "temporale",  &mut files);
+    collect_yaml_sorted(root / "universale" / "sanctorale", &mut files);
+
+    // 2. Nationale — si target est National ou Diocesan
+    if let Some(region) = target.region() {
+        collect_yaml_sorted(root / "nationalia" / region / "temporale",  &mut files);
+        collect_yaml_sorted(root / "nationalia" / region / "sanctorale", &mut files);
+    }
+
+    // 3. Diocésaine — si target est Diocesan
+    if let Some(diocese) = target.diocese() {
+        collect_yaml_sorted(root / "dioecesana" / diocese / "temporale",  &mut files);
+        collect_yaml_sorted(root / "dioecesana" / diocese / "sanctorale", &mut files);
+    }
+
+    files
+}
+
+fn collect_yaml_sorted(dir: &Path, out: &mut Vec<PathBuf>) {
+    // fs::read_dir n'est pas ordonné — collecte puis tri lex. (INV-FORGE-1)
+    if !dir.exists() { return; }
+    let mut entries: Vec<_> = fs::read_dir(dir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension() == Some("yaml".as_ref()))
+        .map(|e| e.path())
+        .collect();
+    entries.sort();
+    out.extend(entries);
+}
+```
+
+Un répertoire absent (ex: `nationalia/FR/temporale/` vide ou inexistant) n'est pas une erreur.
 
 ---
 
@@ -691,30 +805,23 @@ Ce tableau est la clé de lecture bidirectionnelle entre les codes d'erreur Rust
 ### 9.1 Solennité Fixe — Nativitas Domini
 
 ```yaml
-# universal.yaml
+# data/universale/sanctorale/nativitas_domini.yaml
 
-scope: universal
-region: ~
-from: 1969
-to: ~
 format_version: 1
+slug: nativitas_domini
+date:
+  month: 12
+  day: 25 # doy = 335 + 24 = 359 (toujours — DOY 0-based)
+category: 0
 
-feasts:
-  - slug: nativitas_domini
-    date:
-      month: 12
-      day: 25 # doy = 335 + 24 = 359 (toujours — DOY 0-based)
-    scope: universal
-    category: 0
-
-    history:
-      - from: 1969
-        to: ~
-        title: "In Nativitate Domini"
-        precedence: 1 # Rang le plus élevé après le Triduum — éviction maximale
-        nature: sollemnitas
-        color: albus
-        season: tempus_nativitatis
+history:
+  - from: 1969
+    to: ~
+    title: "In Nativitate Domini"
+    precedence: 1 # Rang le plus élevé après le Triduum — éviction maximale
+    nature: sollemnitas
+    color: albus
+    season: tempus_nativitatis
 ```
 
 **Résultat dans `CalendarEntry` pour le 25 décembre de n'importe quelle année :**
@@ -738,21 +845,23 @@ Valeur `flags` numérique : `encode_flags(1, 0, 2, 0)` = `1 | (0 << 4) | (2 << 8
 ### 9.2 Fête Mobile — Ascensio Domini
 
 ```yaml
-- slug: ascensio_domini
-  mobile:
-    anchor: pascha
-    offset: +39
-  scope: universal
-  category: 0
+# data/universale/temporale/ascensio_domini.yaml
 
-  history:
-    - from: 1969
-      to: ~
-      title: "Ascensio Domini"
-      precedence: 1
-      nature: sollemnitas
-      color: albus
-      season: tempus_paschale
+format_version: 1
+slug: ascensio_domini
+mobile:
+  anchor: pascha
+  offset: +39
+category: 0
+
+history:
+  - from: 1969
+    to: ~
+    title: "Ascensio Domini"
+    precedence: 1
+    nature: sollemnitas
+    color: albus
+    season: tempus_paschale
 ```
 
 **Résolution en 2025 :** Pâques 2025 = `doy 110` (20 avril, DOY 0-based). Ascension = `doy 110 + 39 = 149` (29 mai 2025).
@@ -774,32 +883,26 @@ Voir §4.3 pour l'exemple complet avec béatification (2011–2013) et canonisat
 ### 9.4 Surcharge Diocésaine
 
 ```yaml
-# diocesan-PARIS.yaml — Fête du patron du diocèse de Paris
-scope: diocesan
-region: PARIS
-from: 1969
-to: ~
+# data/dioecesana/PARIS/sanctorale/dionysii_parisiensis.yaml
+# scope=diocesan, region=PARIS déduits du chemin
+
 format_version: 1
+slug: dionysii_parisiensis
+date:
+  month: 10
+  day: 9 # doy = 274 + 8 = 282
+category: 2
 
-feasts:
-  - slug: dionysii_parisiensis
-    date:
-      month: 10
-      day: 9 # doy = 274 + 8 = 282
-    scope: diocesan
-    region: PARIS
-    category: 2
-
-    history:
-      - from: 1969
-        to: ~
-        title: "S. Dionysius, ep. et socii, mm."
-        precedence: 4 # Solennité pour le diocèse de Paris (patron)
-        nature: sollemnitas
-        color: rubeus
+history:
+  - from: 1969
+    to: ~
+    title: "S. Dionysius, ep. et socii, mm."
+    precedence: 4 # Solennité pour le diocèse de Paris (patron)
+    nature: sollemnitas
+    color: rubeus
 ```
 
-**Comportement Forge :** lors de la génération d'un `.kald` pour le diocèse de Paris, la Forge charge `universal.yaml` puis `national-FR.yaml` puis `diocesan-PARIS.yaml`. Si le 9 octobre est également occupé par une fête nationale ou universelle de `Precedence` ≥ 4, la Forge applique Conflict Resolution (Étape 3) : la Solennité diocésaine (`Precedence = 4`) a la même valeur que les Solennités du calendrier général — la règle de scope local l'emporte à égalité de `Precedence`.
+**Comportement Forge :** lors d'une compilation `CompilationTarget::Diocesan { region: "FR", diocese: "PARIS" }`, la Forge découvre et ingère les fichiers dans l'ordre de §1.4 : universale, puis nationalia/FR, puis dioecesana/PARIS. Si le 9 octobre est également occupé par une fête nationale ou universelle de `Precedence` ≥ 4, la Forge applique Conflict Resolution (Étape 3) : la Solennité diocésaine (`Precedence = 4`) a la même valeur que les Solennités du calendrier général — la règle de scope local l'emporte à égalité de `Precedence`.
 
 ---
 
@@ -807,8 +910,10 @@ feasts:
 
 Avant de soumettre un fichier à la Forge :
 
-- [ ] `format_version: 1` présent en en-tête
-- [ ] `scope` et `region` cohérents (null pour universal)
+- [ ] `format_version: 1` présent dans chaque fichier
+- [ ] Le fichier est placé dans le répertoire correct selon son scope : `universale/`, `nationalia/{ISO}/`, `dioecesana/{ID}/`
+- [ ] Le nom du fichier correspond exactement au `slug` déclaré (`{slug}.yaml`)
+- [ ] Le fichier est dans `temporale/` si la fête est déclarée avec `mobile:`, dans `sanctorale/` si déclarée avec `date:`
 - [ ] Chaque fête a exactement un bloc `date` ou `mobile` — jamais les deux
 - [ ] Tous les slugs sont en latin snake_case **neutre** — aucun statut liturgique encodé
 - [ ] Le slug est stable dans le temps (immuable après première allocation)
