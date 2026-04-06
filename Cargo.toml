@@ -1,26 +1,14 @@
 [workspace]
-resolver = "2"
 members = [
     "liturgical-calendar-core",
     "liturgical-calendar-forge",
 ]
+resolver = "2"
 
-[workspace.package]
-version     = "0.1.0"
-edition     = "2021"
-authors     = ["Liturgical Calendar Authors"]
-license     = "MIT OR Apache-2.0"
-repository  = "https://github.com/Scriptura/liturgical-calendar"
-rust-version = "1.75"
-
+# INV-W1 : panic = "abort" déclaré ici (workspace root).
+# Les Cargo.toml membres sont ignorés pour ce champ.
 [profile.release]
-opt-level = 3
-lto       = "fat"          # Link Time Optimization : optimisation globale du binaire
-codegen-units = 1          # Maximise les optimisations au prix d'un temps de build plus long
-strip     = "symbols"      # Réduit la taille du binaire final (utile pour le no_std)
+panic = "abort"
 
-# Profil bench : release + debug info pour le profiler
-[profile.bench]
-inherits  = "release"
-debug     = true
-strip     = "none"
+[profile.dev]
+panic = "abort"

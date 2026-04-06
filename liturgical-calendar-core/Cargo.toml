@@ -1,22 +1,26 @@
 [package]
-name        = "liturgical-calendar-core"
-version     = "0.1.0"
-edition     = "2021"
-rust-version = "1.75"
-description = "Engine liturgical — projecteur de mémoire O(1) sur .kald (no_std, no_alloc)"
-license     = "MIT"
+name = "liturgical-calendar-core"
+version = "2.0.1"
+edition = "2021"
+# INV-W9 : offset_of! stabilisé en 1.77
+rust-version = "1.77"
 
-[lib]
-# crate-type "lib" (rlib) : utilisé par cargo test et les dépendances Rust internes.
-# Pour produire l'archive statique C (.a) :
+# Production : "lib" (rlib) uniquement.
+# La staticlib C est produite par invocation explicite :
 #   cargo rustc -p liturgical-calendar-core --release -- --crate-type staticlib
+# (voir §0.3 spec — double crate-type rend cargo test inopérant en no_std)
+[lib]
 crate-type = ["lib"]
 
 [dependencies]
-# Dérogation INV-W1 : sha2 v0.10+ (RustCrypto), no_std/no_alloc garanti.
-# default-features = false désactive toute dépendance vers std ou alloc.
-# Vérification : cargo tree -p liturgical-calendar-core → sha2 uniquement.
+# Seule dépendance autorisée — INV-W1.
+# default-features = false : désactive std + alloc transitif.
 sha2 = { version = "0.10", default-features = false }
 
+[build-dependencies]
+# cbindgen est une build-dependency optionnelle, hors CI standard (voir tâche 1.5).
+cbindgen = { version = "0.27", optional = true }
+
 [features]
-gen-headers = []
+# INV : feature déclarée explicitement pour éviter unexpected_cfg sous -D warnings (Cargo 1.75+).
+gen-headers = ["cbindgen"]

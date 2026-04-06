@@ -1,122 +1,63 @@
-// entry.rs — CalendarEntry binaire .kald v2.0 (specification.md §3.3–3.4).
+// liturgical-calendar-core/src/entry.rs
 //
-// Layout fixé (8 octets, stride constant, #[repr(C)]) :
-//   [0..2]  primary_id      u16   FeastID principal. 0 = Padding Entry.
-//   [2..4]  secondary_index u16   Index dans le tableau u16 du Secondary Pool.
-//   [4..6]  flags           u16   Champs encodés (§3.4).
-//   [6]     secondary_count u8    Nombre de commémorations (0 = aucune).
-//   [7]     _reserved       u8    0x00 — padding pour stride 64 bits.
+// CalendarEntry : stride constant 8 octets, #[repr(C)].
+// Layout flags (u16) — spec §3.4 (canonique) :
 //
-// Layout flags (u16, specification.md §3.4) :
-//   bits  0– 3  Precedence (4 bits) — rang effectif 0–15
-//   bits  4– 7  Color      (4 bits) — index couleur liturgique 0–6
-//   bits  8–10  Season     (3 bits) — index saison liturgique 0–6
-//   bits 11–13  Nature     (3 bits) — type liturgique 0–4
-//   bits 14–15  Reserved   (2 bits) — doit être 0
+//   Bits 0–3   : Precedence       (4 bits) — masque 0x000F,  shift >>  0
+//   Bits 4–7   : Color            (4 bits) — masque 0x000F,  shift >>  4
+//   Bits 8–10  : LiturgicalPeriod (3 bits) — masque 0x0007,  shift >>  8
+//   Bits 11–13 : Nature           (3 bits) — masque 0x0007,  shift >> 11
+//   Bits 14–15 : réservés (doivent être 0)
 //
-// Encodage : flags = P | (C << 4) | (S << 8) | (N << 11)
-//
-// Justification du layout : flags (u16) à l'offset pair 4 garantit l'alignement
-// naturel sur 2 octets. Placer secondary_count (u8) avant flags aurait produit
-// un offset impair (5) pour flags — UB potentiel sur architectures strictes.
+// Note : le brief initial inversait Nature (bits 4–6) et Color (bits 11–13).
+// La spec §3.4 et le roadmap §1.3 font foi — Color est aux bits 4–7 (4 bits).
 
-use crate::types::{Color, DomainError, Nature, Precedence, Season};
+use crate::types::{Color, DomainError, LiturgicalPeriod, Nature, Precedence};
 
-// ─── Assertions de layout statiques ──────────────────────────────────────────
-use core::mem;
-const _ASSERT_ENTRY_SIZE: () = assert!(mem::size_of::<CalendarEntry>() == 8);
-const _ASSERT_ENTRY_STRIDE: () = assert!(mem::size_of::<CalendarEntry>() == 8);
-
-// ─── Masques d'extraction des champs depuis flags ─────────────────────────────
-
-/// Masque Precedence : bits 0–3.
-const MASK_PRECEDENCE: u16 = 0x000F;
-/// Masque Color : bits 4–7.
-const MASK_COLOR: u16 = 0x000F;
-/// Masque Season : bits 8–10.
-const MASK_SEASON: u16 = 0x0007;
-/// Masque Nature : bits 11–13.
-const MASK_NATURE: u16 = 0x0007;
-
-// ─── CalendarEntry ────────────────────────────────────────────────────────────
-
-/// Entrée du calendrier liturgique — stride 8 octets, `#[repr(C)]`.
+/// Entrée d'un jour liturgique dans le Data Body du `.kald`.
 ///
-/// Unité atomique du Data Body du `.kald`. Chaque entrée représente un jour
-/// `(year, doy)` dans la plage 1969–2399.
+/// Stride constant : **8 octets**. Critique pour la formule d'index O(1)
+/// et la compatibilité SIMD (spec §3.3).
 ///
-/// **Padding Entry** : `primary_id == 0`, `secondary_count == 0`, `flags == 0`.
-/// Placée à `doy = 59` par la Forge pour chaque année non-bissextile.
-/// L'Engine retourne cette entrée normalement (`KAL_ENGINE_OK`).
+/// `primary_id == 0` indique une Padding Entry (ex: 29 fév. en année non-bissextile).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CalendarEntry {
-    /// FeastID de la célébration principale.
-    /// `0` = Padding Entry (slot vide — 29 février d'une année non-bissextile).
+    /// FeastID de la célébration principale. `0` = Padding Entry. Offset 0.
     pub primary_id: u16,
-
-    /// Index dans le **tableau `u16`** du Secondary Pool (unité : éléments, pas octets).
-    /// Ignoré si `secondary_count == 0`.
+    /// Index dans le tableau `u16` du Secondary Pool. Ignoré si `secondary_count == 0`. Offset 2.
     pub secondary_index: u16,
-
-    /// Champs encodés sur 16 bits. Voir `encode_flags` / méthodes d'extraction.
-    /// Bits 14–15 réservés — doivent être nuls dans tout fichier valide.
+    /// Champ de bits encodant Precedence, Color, LiturgicalPeriod, Nature. Offset 4.
+    ///
+    /// Extraction :
+    /// - `Precedence = flags & 0x000F`
+    /// - `Color = (flags >> 4) & 0x000F`
+    /// - `LiturgicalPeriod = (flags >> 8) & 0x0007`
+    /// - `Nature = (flags >> 11) & 0x0007`
     pub flags: u16,
-
-    /// Nombre de commémorations. `0` = aucune — pas d'accès au Secondary Pool.
+    /// Nombre de commémorations (entrées dans le Secondary Pool). `0` = aucune. Offset 6.
     pub secondary_count: u8,
-
-    /// Padding pour aligner l'entrée sur 8 octets (stride 64 bits).
-    /// Non validé par l'Engine au niveau entrée (tolérance en lecture).
+    /// Padding pour stride 64 bits. `0x00`. Offset 7.
     pub _reserved: u8,
 }
 
+// Assertions statiques de layout — vérifiées à la compilation, zéro coût runtime.
+const _: () = {
+    assert!(
+        core::mem::size_of::<CalendarEntry>() == 8,
+        "CalendarEntry : stride doit être exactement 8 octets"
+    );
+};
+
 impl CalendarEntry {
-    /// Extrait la `Precedence` depuis `flags[0..3]`.
+    /// Construit une entrée nulle. Tous les champs à zéro.
     ///
-    /// Retourne `Err(DomainError)` si la valeur encodée dépasse 12 (réservée).
-    pub fn precedence(&self) -> Result<Precedence, DomainError> {
-        let raw = (self.flags & MASK_PRECEDENCE) as u8;
-        Precedence::try_from_u8(raw)
-    }
-
-    /// Extrait la `Color` depuis `flags[4..7]`.
-    ///
-    /// Retourne `Err(DomainError)` si la valeur encodée dépasse 5 (réservée).
-    pub fn color(&self) -> Result<Color, DomainError> {
-        let raw = ((self.flags >> 4) & MASK_COLOR) as u8;
-        Color::try_from_u8(raw)
-    }
-
-    /// Extrait la `Season` depuis `flags[8..10]`.
-    ///
-    /// Retourne `Err(DomainError)` si la valeur encodée vaut 7 (réservée).
-    pub fn season(&self) -> Result<Season, DomainError> {
-        let raw = ((self.flags >> 8) & MASK_SEASON) as u8;
-        Season::try_from_u8(raw)
-    }
-
-    /// Extrait la `Nature` depuis `flags[11..13]`.
-    ///
-    /// Retourne `Err(DomainError)` si la valeur encodée dépasse 4 (réservée).
-    pub fn nature(&self) -> Result<Nature, DomainError> {
-        let raw = ((self.flags >> 11) & MASK_NATURE) as u8;
-        Nature::try_from_u8(raw)
-    }
-
-    /// Retourne `true` si cette entrée est une **Padding Entry** :
-    /// slot 29 février d'une année non-bissextile (`primary_id == 0`).
-    ///
-    /// L'appelant ne doit pas accéder au Secondary Pool pour une Padding Entry.
-    #[inline(always)]
-    pub fn is_padding(&self) -> bool {
-        self.primary_id == 0
-    }
-
-    /// Entrée nulle (zéro tous champs) — utilisable comme valeur initiale dans les tests.
-    #[cfg(test)]
-    pub fn zeroed() -> Self {
-        CalendarEntry {
+    /// `const fn` — utilisable en contexte statique et `no_alloc` (INV-W6).
+    /// Méthode canonique pour les pré-allocations déterministes.
+    /// `Default::default()` ne peut pas être `const fn` en Rust stable —
+    /// `zeroed()` est donc le point d'entrée recommandé.
+    pub const fn zeroed() -> Self {
+        Self {
             primary_id: 0,
             secondary_index: 0,
             flags: 0,
@@ -124,245 +65,212 @@ impl CalendarEntry {
             _reserved: 0,
         }
     }
+
+    /// Retourne `true` si l'entrée est une Padding Entry ou un slot vide.
+    ///
+    /// Condition : `primary_id == 0`. L'Engine traite ce slot comme vide
+    /// sans accéder au Secondary Pool.
+    #[inline]
+    pub fn is_padding(&self) -> bool {
+        self.primary_id == 0
+    }
+
+    /// Décode le rang liturgique depuis `flags[0..3]`.
+    ///
+    /// Retourne `Err` si la valeur extraite est réservée (13–15).
+    #[inline]
+    pub fn precedence(&self) -> Result<Precedence, DomainError> {
+        // Masque 0x000F — bits 0–3.
+        Precedence::try_from_u8((self.flags & 0x000F) as u8)
+    }
+
+    /// Décode la couleur liturgique depuis `flags[4..7]`.
+    ///
+    /// Masque 0x000F appliqué après shift de 4 — champ 4 bits (spec §3.4 v2.0).
+    #[inline]
+    pub fn color(&self) -> Result<Color, DomainError> {
+        // Masque 0x000F — bits 4–7.
+        Color::try_from_u8(((self.flags >> 4) & 0x000F) as u8)
+    }
+
+    /// Décode la période opérationnelle depuis `flags[8..10]`.
+    ///
+    /// Opération bitwise unique : `(flags >> 8) & 0x0007`.
+    /// Accès O(1), SIMD-compatible — invariant de performance sanctuarisé (ADR).
+    #[inline]
+    pub fn liturgical_period(&self) -> Result<LiturgicalPeriod, DomainError> {
+        // Masque 0x0007 — bits 8–10.
+        LiturgicalPeriod::try_from_u8(((self.flags >> 8) & 0x0007) as u8)
+    }
+
+    /// Décode l'axe sémantique depuis `flags[11..13]`.
+    ///
+    /// Retourne `Err` pour les valeurs réservées (5–7).
+    #[inline]
+    pub fn nature(&self) -> Result<Nature, DomainError> {
+        // Masque 0x0007 — bits 11–13.
+        Nature::try_from_u8(((self.flags >> 11) & 0x0007) as u8)
+    }
 }
 
-/// Encode `flags` depuis les quatre champs de domaine.
-///
-/// Formule canonique (specification.md §3.4) :
-/// `flags = P | (C << 4) | (S << 8) | (N << 11)`
-///
-/// Utilisée par la Forge (Étape 5) et les tests de roundtrip de l'Engine.
-#[inline(always)]
-pub fn encode_flags(p: Precedence, c: Color, s: Season, n: Nature) -> u16 {
-    (p as u16) | ((c as u16) << 4) | ((s as u16) << 8) | ((n as u16) << 11)
+impl Default for CalendarEntry {
+    /// Délègue à [`CalendarEntry::zeroed`].
+    fn default() -> Self {
+        Self::zeroed()
+    }
 }
 
-// ─── Tests ────────────────────────────────────────────────────────────────────
+/// Encode un jeu de champs dans un champ `flags` (u16).
+///
+/// Utilitaire interne pour les tests — non exposé à l'ABI C.
+/// Formule : `flags = prec | (color << 4) | (period << 8) | (nature << 11)`
+#[cfg(test)]
+pub(crate) fn encode_flags(
+    prec: Precedence,
+    color: Color,
+    period: LiturgicalPeriod,
+    nature: Nature,
+) -> u16 {
+    (prec as u16)
+        | ((color as u16) << 4)
+        | ((period as u16) << 8)
+        | ((nature as u16) << 11)
+}
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Tests unitaires — tâche 1.3 roadmap
+// ─────────────────────────────────────────────────────────────────────────────
 #[cfg(test)]
 mod tests {
     use super::*;
     use core::mem::size_of;
 
-    /// Calcul d'offset de champ sans offset_of! (stabilisé en 1.77).
+    #[test]
+    fn size_is_8() {
+        assert_eq!(size_of::<CalendarEntry>(), 8, "stride constant critique pour l'indexation");
+    }
+
     macro_rules! field_offset {
         ($type:ty, $field:ident) => {{
-            let uninit = core::mem::MaybeUninit::<$type>::uninit();
-            let base = uninit.as_ptr() as usize;
-            let field = unsafe { core::ptr::addr_of!((*uninit.as_ptr()).$field) } as usize;
-            field - base
+            let u = core::mem::MaybeUninit::<$type>::uninit();
+            unsafe {
+                core::ptr::addr_of!((*u.as_ptr()).$field) as usize
+                    - u.as_ptr() as usize
+            }
         }};
     }
 
-    // ── Tests de layout (stride et offsets) ───────────────────────────────────
-
     #[test]
-    fn entry_size_is_8() {
-        // Stride constant = 8 octets. Critique pour l'indexation O(1).
-        assert_eq!(size_of::<CalendarEntry>(), 8);
-    }
-
-    #[test]
-    fn entry_flags_at_offset_4() {
-        // flags doit être à l'offset 4 — alignement naturel u16 sur offset pair.
-        assert_eq!(field_offset!(CalendarEntry, flags), 4);
-    }
-
-    #[test]
-    fn entry_field_offsets() {
-        assert_eq!(field_offset!(CalendarEntry, primary_id), 0);
+    fn field_offsets() {
+        assert_eq!(field_offset!(CalendarEntry, primary_id),      0);
         assert_eq!(field_offset!(CalendarEntry, secondary_index), 2);
-        assert_eq!(field_offset!(CalendarEntry, flags), 4);
+        assert_eq!(field_offset!(CalendarEntry, flags),           4,
+            "flags doit être à l'offset 4 — alignement naturel u16 sur offset pair");
         assert_eq!(field_offset!(CalendarEntry, secondary_count), 6);
-        assert_eq!(field_offset!(CalendarEntry, _reserved), 7);
+        assert_eq!(field_offset!(CalendarEntry, _reserved),       7);
     }
 
-    // ── Tests de Padding Entry ─────────────────────────────────────────────────
+    #[test]
+    fn zeroed_is_padding() {
+        let e = CalendarEntry::zeroed();
+        assert!(e.is_padding());
+        assert_eq!(e.flags, 0);
+        assert_eq!(e.secondary_count, 0);
+        assert_eq!(e._reserved, 0);
+    }
 
     #[test]
-    fn padding_entry_detected() {
-        let e = CalendarEntry {
-            primary_id: 0,
-            secondary_index: 0,
-            flags: 0,
-            secondary_count: 0,
-            _reserved: 0,
-        };
-        assert!(e.is_padding(), "primary_id=0 doit être Padding Entry");
-        assert_eq!(e.secondary_count, 0);
+    fn default_equals_zeroed() {
+        assert_eq!(CalendarEntry::default(), CalendarEntry::zeroed());
+    }
+
+    #[test]
+    fn padding_entry_primary_id_zero() {
+        let e = CalendarEntry { primary_id: 0, secondary_count: 0, ..CalendarEntry::zeroed() };
+        assert!(e.is_padding());
     }
 
     #[test]
     fn non_padding_entry() {
-        let e = CalendarEntry {
-            primary_id: 0x0042,
-            secondary_index: 0,
-            flags: 0,
-            secondary_count: 0,
-            _reserved: 0,
-        };
+        let e = CalendarEntry { primary_id: 1, ..CalendarEntry::zeroed() };
         assert!(!e.is_padding());
     }
 
-    // ── Tests de roundtrip encode/decode flags ─────────────────────────────────
-
+    /// Roundtrip encode/decode pour toutes les combinaisons représentatives.
+    /// Un test exhaustif (13 × 6 × 7 × 5 = 2730 combinaisons) est faisable
+    /// mais redondant avec les tests unitaires des enums dans types.rs.
     #[test]
-    fn flags_roundtrip_precedence() {
-        use Precedence::*;
-        let variants = [
-            TriduumSacrum,
-            SollemnitatesFixaeMaior,
-            DominicaePrivilegiataeMaior,
-            FeriaePrivilegiataeMaior,
-            SollemnitatesGenerales,
-            SollemnitatesPropria,
-            FestaDomini,
-            DominicaePerAnnum,
-            FestaBMVEtSanctorumGenerales,
-            FestaPropria,
-            FeriaeAdventusEtOctavaNativitatis,
-            MemoriaeObligatoriae,
-            FeriaePerAnnumEtMemoriaeAdLibitum,
-        ];
-        for p in variants {
-            let flags = encode_flags(p, Color::Viridis, Season::TempusOrdinarium, Nature::Feria);
-            let entry = CalendarEntry {
-                primary_id: 1,
-                secondary_index: 0,
-                flags,
-                secondary_count: 0,
-                _reserved: 0,
-            };
-            assert_eq!(entry.precedence(), Ok(p), "roundtrip Precedence::{p:?}");
-        }
-    }
-
-    #[test]
-    fn flags_roundtrip_color() {
-        use Color::*;
-        for c in [Albus, Rubeus, Viridis, Violaceus, Roseus, Niger] {
-            let flags = encode_flags(
-                Precedence::MemoriaeObligatoriae,
-                c,
-                Season::TempusOrdinarium,
-                Nature::Memoria,
-            );
-            let entry = CalendarEntry {
-                primary_id: 1,
-                secondary_index: 0,
-                flags,
-                secondary_count: 0,
-                _reserved: 0,
-            };
-            assert_eq!(entry.color(), Ok(c), "roundtrip Color::{c:?}");
-        }
-    }
-
-    #[test]
-    fn flags_roundtrip_season() {
-        use Season::*;
-        for s in [
-            TempusOrdinarium,
-            TempusAdventus,
-            TempusNativitatis,
-            TempusQuadragesimae,
-            TriduumPaschale,
-            TempusPaschale,
-            DiesSancti,
-        ] {
-            let flags = encode_flags(
-                Precedence::FeriaePerAnnumEtMemoriaeAdLibitum,
-                Color::Viridis,
-                s,
+    fn flags_roundtrip_representative() {
+        let cases = [
+            (
+                Precedence::TriduumSacrum,
+                Color::Rubeus,
+                LiturgicalPeriod::TriduumPaschale,
                 Nature::Feria,
-            );
-            let entry = CalendarEntry {
-                primary_id: 1,
-                secondary_index: 0,
-                flags,
-                secondary_count: 0,
-                _reserved: 0,
-            };
-            assert_eq!(entry.season(), Ok(s), "roundtrip Season::{s:?}");
-        }
-    }
-
-    #[test]
-    fn flags_roundtrip_nature() {
-        use Nature::*;
-        for n in [Sollemnitas, Festum, Memoria, Feria, Commemoratio] {
-            let flags = encode_flags(
+            ),
+            (
                 Precedence::SollemnitatesGenerales,
                 Color::Albus,
-                Season::TempusPaschale,
-                n,
-            );
-            let entry = CalendarEntry {
-                primary_id: 1,
-                secondary_index: 0,
-                flags,
-                secondary_count: 0,
-                _reserved: 0,
-            };
-            assert_eq!(entry.nature(), Ok(n), "roundtrip Nature::{n:?}");
+                LiturgicalPeriod::DiesSancti,
+                Nature::Sollemnitas,
+            ),
+            (
+                Precedence::FeriaePerAnnumEtMemoriaeAdLibitum,
+                Color::Viridis,
+                LiturgicalPeriod::TempusOrdinarium,
+                Nature::Memoria,
+            ),
+            (
+                Precedence::MemoriaeObligatoriae,
+                Color::Violaceus,
+                LiturgicalPeriod::TempusQuadragesimae,
+                Nature::Commemoratio,
+            ),
+            (
+                Precedence::FestaDomini,
+                Color::Roseus,
+                LiturgicalPeriod::TempusAdventus,
+                Nature::Festum,
+            ),
+        ];
+
+        for (prec, color, period, nature) in cases {
+            let flags = encode_flags(prec, color, period, nature);
+            let entry = CalendarEntry { flags, ..CalendarEntry::zeroed() };
+            assert_eq!(entry.precedence(), Ok(prec));
+            assert_eq!(entry.color(), Ok(color));
+            assert_eq!(entry.liturgical_period(), Ok(period));
+            assert_eq!(entry.nature(), Ok(nature));
         }
     }
 
+    /// Vérifie que les bits réservés (14–15) n'interfèrent pas avec le décodage.
     #[test]
-    fn flags_roundtrip_combined() {
-        // Test d'une combinaison représentative :
-        // TriduumSacrum (0), Violaceus (3), TriduumPaschale (4), Feria (3)
-        // flags = 0 | (3 << 4) | (4 << 8) | (3 << 11)
-        //       = 0x0000 | 0x0030 | 0x0400 | 0x1800
-        //       = 0x1C30
-        let p = Precedence::TriduumSacrum;
-        let c = Color::Violaceus;
-        let s = Season::TriduumPaschale;
-        let n = Nature::Feria;
-        let flags = encode_flags(p, c, s, n);
-        assert_eq!(flags, 0x1C30);
-
-        let entry = CalendarEntry {
-            primary_id: 0x0010,
-            secondary_index: 0,
-            flags,
-            secondary_count: 0,
-            _reserved: 0,
-        };
-        assert_eq!(entry.precedence(), Ok(p));
-        assert_eq!(entry.color(), Ok(c));
-        assert_eq!(entry.season(), Ok(s));
-        assert_eq!(entry.nature(), Ok(n));
-        assert!(!entry.is_padding()); // primary_id != 0
-    }
-
-    #[test]
-    fn flags_reserved_bits_ignored_in_read() {
-        // Les bits 14–15 réservés ne doivent pas perturber l'extraction.
-        // L'Engine lit les bits 0–13 uniquement, bits 14–15 sont masqués.
-        let mut entry = CalendarEntry::zeroed();
-        entry.primary_id = 1;
-        entry.flags = encode_flags(
-            Precedence::FestaDomini,
-            Color::Albus,
-            Season::TempusNativitatis,
-            Nature::Festum,
+    fn reserved_bits_ignored_by_decoders() {
+        let flags_clean = encode_flags(
+            Precedence::DominicaePerAnnum,
+            Color::Viridis,
+            LiturgicalPeriod::TempusOrdinarium,
+            Nature::Feria,
         );
-        // Forcer les bits réservés 14–15 à 1 (simulate fichier légèrement corrompu)
-        entry.flags |= 0xC000;
-        // Les extracteurs masquent correctement — pas d'erreur
-        assert_eq!(entry.precedence(), Ok(Precedence::FestaDomini));
-        assert_eq!(entry.color(), Ok(Color::Albus));
-        assert_eq!(entry.season(), Ok(Season::TempusNativitatis));
-        assert_eq!(entry.nature(), Ok(Nature::Festum));
+        // Positionne les bits réservés 14–15
+        let flags_dirty = flags_clean | 0xC000;
+
+        let entry = CalendarEntry { flags: flags_dirty, ..CalendarEntry::zeroed() };
+        // Les masques d'extraction ne lisent pas les bits 14–15 → résultat identique.
+        assert_eq!(entry.precedence(), Ok(Precedence::DominicaePerAnnum));
+        assert_eq!(entry.color(), Ok(Color::Viridis));
+        assert_eq!(entry.liturgical_period(), Ok(LiturgicalPeriod::TempusOrdinarium));
+        assert_eq!(entry.nature(), Ok(Nature::Feria));
     }
 
+    /// Simulation d'une Padding Entry doy=59 sur année non-bissextile.
     #[test]
-    fn flags_invalid_precedence_reserved() {
-        // Precedence = 13 (réservé) dans flags → DomainError
-        let mut entry = CalendarEntry::zeroed();
-        entry.primary_id = 1;
-        entry.flags = 13u16; // bits 0–3 = 13
-        assert!(entry.precedence().is_err());
+    fn padding_entry_doy59_non_leap() {
+        // La Forge place primary_id=0, flags=0, secondary_count=0 à doy=59
+        // pour les années non-bissextiles (spec §3.3, §2.1).
+        let entry = CalendarEntry::zeroed();
+        assert!(entry.is_padding());
+        assert_eq!(entry.secondary_count, 0);
     }
 }

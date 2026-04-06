@@ -1,358 +1,336 @@
-// types.rs — Types de domaine canoniques de l'Engine (specification.md §4).
+// liturgical-calendar-core/src/types.rs
 //
-// Tous les enums sont #[repr(u8)] — représentation binaire exacte garantie.
-// Valeurs numériques figées depuis v1.0, inchangées en v2.0.
-// DomainError : Copy, pas de String, primitifs uniquement (INV-W1).
+// Types de domaine canoniques (spec §4.1–4.4).
+// Chaque enum est `#[repr(u8)]` — représentation binaire exacte dans le `.kald`.
+// `try_from_u8` est le seul point d'entrée externe (INV-FFI-3).
+//
+// DIVERGENCE flags (nota bene) :
+//   Le prompt initial (brief) plaçait Nature aux bits 4–6 et Color aux bits 11–13.
+//   La spec §3.4 (canonique) et le roadmap §1.3 définissent :
+//     bits 4–7  → Color  (4 bits, masque 0x000F après >> 4)
+//     bits 11–13→ Nature (3 bits, masque 0x0007 après >> 11)
+//   C'est la spec §3.4 qui fait foi. Les masques d'extraction dans entry.rs
+//   suivent ce layout.
 
-use core::fmt;
-
-// ─── Erreur de conversion depuis un discriminant hors domaine ─────────────────
-
-/// Erreur produite par `try_from_u8` quand la valeur dépasse le domaine défini.
+/// Erreur de décodage d'un champ de domaine depuis `flags`.
 ///
-/// Champs primitifs uniquement — compatible `no_alloc` (INV-W1).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct DomainError {
-    /// Identifiant du type : 0=Precedence, 1=Nature, 2=Color, 3=Season.
-    pub type_tag: u8,
-    /// Valeur u8 hors domaine reçue.
-    pub value: u8,
+/// `Copy` et sans allocation — compatible avec `no_std` (spec §1.1 roadmap).
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum DomainError {
+    /// Valeur numérique hors de l'intervalle valide pour cet enum.
+    InvalidValue(u8),
 }
 
-impl fmt::Display for DomainError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "DomainError(type_tag={}, value={})",
-            self.type_tag, self.value
-        )
-    }
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// 4.1 Precedence — bits 0–3 de `flags` (4 bits)
+// ─────────────────────────────────────────────────────────────────────────────
 
-// ─── 4.1 Precedence ───────────────────────────────────────────────────────────
-
-/// Rang de précédence liturgique (specification.md §4.1).
+/// Rang liturgique effectif, résolu définitivement par la Forge (cache AOT).
 ///
-/// Axe ordinal de résolution de collision. **Valeur numérique inverse** :
-/// valeur plus faible = priorité plus haute. Comparaison entière pure.
+/// Axe ordinal de résolution de collision. Valeur numérique **inverse** :
+/// une valeur plus faible signifie une priorité plus haute.
+/// Comparaison entière pure — aucune branche de correspondance au runtime.
 ///
-/// _Tabella dierum liturgicorum — NALC 1969. Ordre figé. Aucune modification autorisée._
-///
-/// Valeurs 13–15 réservées système : `try_from_u8` retourne `Err` pour ces valeurs.
+/// *Tabella dierum liturgicorum — NALC 1969. Ordre figé. Aucune modification autorisée.*
+/// Valeurs 13–15 réservées système (validation V2).
 #[repr(u8)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Precedence {
-    /// Triduum Pascal — priorité absolue.
-    TriduumSacrum = 0,
-    /// Solennités fixes majeures (Noël, Épiphanie, etc.).
-    SollemnitatesFixaeMaior = 1,
-    /// Dimanches privilégiés majeurs (Rameaux, Pâques, Pentecôte).
-    DominicaePrivilegiataeMaior = 2,
-    /// Jours fériés privilégiés majeurs (Cendres, Semaine Sainte).
-    FeriaePrivilegiataeMaior = 3,
+    /// Triduum Sacrum (priorité absolue).
+    TriduumSacrum                     = 0,
+    /// Solennités fixes majeures (Noël, Épiphanie, Ascension…).
+    SollemnitatesFixaeMaior           = 1,
+    /// Dimanches privilégiés majeurs (Avent, Carême, Pâques).
+    DominicaePrivilegiataeMaior       = 2,
+    /// Féries privilégiées majeures (Mercredi des Cendres, Semaine Sainte).
+    FeriaePrivilegiataeMaior          = 3,
     /// Solennités générales du calendrier universel.
-    SollemnitatesGenerales = 4,
-    /// Solennités propres (diocésaines, nationales).
-    SollemnitatesPropria = 5,
-    /// Fêtes du Seigneur.
-    FestaDomini = 6,
-    /// Dimanches per annum.
-    DominicaePerAnnum = 7,
-    /// Fêtes de la Vierge et des Saints du calendrier général.
-    FestaBMVEtSanctorumGenerales = 8,
+    SollemnitatesGenerales            = 4,
+    /// Solennités propres (diocésaines, religieuses).
+    SollemnitatesPropria              = 5,
+    /// Fêtes du Seigneur inscrites au calendrier général.
+    FestaDomini                       = 6,
+    /// Dimanches du temps ordinaire.
+    DominicaePerAnnum                 = 7,
+    /// Fêtes de la BVM et des saints du calendrier général.
+    FestaBMVEtSanctorumGenerales      = 8,
     /// Fêtes propres.
-    FestaPropria = 9,
-    /// Fériés de l'Avent et de l'Octave de Noël.
+    FestaPropria                      = 9,
+    /// Féries d'Avent et octave de Noël (17–24 décembre).
     FeriaeAdventusEtOctavaNativitatis = 10,
     /// Mémoires obligatoires.
-    MemoriaeObligatoriae = 11,
-    /// Fériés per annum et mémoires ad libitum.
+    MemoriaeObligatoriae              = 11,
+    /// Féries du temps ordinaire et mémoires facultatives.
     FeriaePerAnnumEtMemoriaeAdLibitum = 12,
-    // 13–15 : réservés système — `try_from_u8` retourne Err.
+    // 13–15 : réservés système — V2 interdit ces valeurs dans les entrées YAML.
 }
 
 impl Precedence {
-    /// Convertit un `u8` en `Precedence`.
+    /// Décode un octet brut en `Precedence`.
     ///
-    /// Retourne `Err` pour les valeurs 13–15 (réservées) et 16–255 (hors domaine).
-    ///
-    /// # Exemple
-    /// ```
-    /// # use liturgical_calendar_core::types::Precedence;
-    /// assert_eq!(Precedence::try_from_u8(0), Ok(Precedence::TriduumSacrum));
-    /// assert!(Precedence::try_from_u8(13).is_err()); // réservé
-    /// ```
+    /// Retourne `Err(DomainError::InvalidValue(val))` pour les valeurs 13–15
+    /// (réservées système — validation V2) et toute valeur > 15.
     pub fn try_from_u8(val: u8) -> Result<Self, DomainError> {
         match val {
-            0 => Ok(Precedence::TriduumSacrum),
-            1 => Ok(Precedence::SollemnitatesFixaeMaior),
-            2 => Ok(Precedence::DominicaePrivilegiataeMaior),
-            3 => Ok(Precedence::FeriaePrivilegiataeMaior),
-            4 => Ok(Precedence::SollemnitatesGenerales),
-            5 => Ok(Precedence::SollemnitatesPropria),
-            6 => Ok(Precedence::FestaDomini),
-            7 => Ok(Precedence::DominicaePerAnnum),
-            8 => Ok(Precedence::FestaBMVEtSanctorumGenerales),
-            9 => Ok(Precedence::FestaPropria),
-            10 => Ok(Precedence::FeriaeAdventusEtOctavaNativitatis),
-            11 => Ok(Precedence::MemoriaeObligatoriae),
-            12 => Ok(Precedence::FeriaePerAnnumEtMemoriaeAdLibitum),
-            _ => Err(DomainError {
-                type_tag: 0,
-                value: val,
-            }),
+            0  => Ok(Self::TriduumSacrum),
+            1  => Ok(Self::SollemnitatesFixaeMaior),
+            2  => Ok(Self::DominicaePrivilegiataeMaior),
+            3  => Ok(Self::FeriaePrivilegiataeMaior),
+            4  => Ok(Self::SollemnitatesGenerales),
+            5  => Ok(Self::SollemnitatesPropria),
+            6  => Ok(Self::FestaDomini),
+            7  => Ok(Self::DominicaePerAnnum),
+            8  => Ok(Self::FestaBMVEtSanctorumGenerales),
+            9  => Ok(Self::FestaPropria),
+            10 => Ok(Self::FeriaeAdventusEtOctavaNativitatis),
+            11 => Ok(Self::MemoriaeObligatoriae),
+            12 => Ok(Self::FeriaePerAnnumEtMemoriaeAdLibitum),
+            _  => Err(DomainError::InvalidValue(val)), // 13–15 réservés, >15 impossible via masque 0x0F
         }
     }
 }
 
-// ─── 4.2 Nature ───────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// 4.2 Nature — bits 11–13 de `flags` (3 bits)
+// ─────────────────────────────────────────────────────────────────────────────
 
-/// Nature liturgique de la célébration (specification.md §4.2).
+/// Axe sémantique de la célébration.
 ///
-/// Axe sémantique. **La Nature ne dicte jamais la force d'éviction** :
-/// seule `Precedence` gouverne l'éviction.
+/// La Nature ne dicte jamais la force d'éviction — seule `Precedence` est
+/// utilisée pour l'éviction. Ce découplage est la justification structurelle
+/// du modèle 2D (spec §4.2).
 ///
-/// Valeurs 5–7 réservées : `try_from_u8` retourne `Err`.
+/// `PartialOrd`/`Ord` dérivés par discriminant (`repr(u8)`) — sans signification
+/// liturgique, satisfont uniquement la contrainte de typage des collections ordonnées.
 #[repr(u8)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Nature {
     /// Solennité.
-    Sollemnitas = 0,
+    Sollemnitas  = 0,
     /// Fête.
-    Festum = 1,
-    /// Mémoire.
-    Memoria = 2,
-    /// Férie (y compris les Dimanches — voir spec §4.2).
-    Feria = 3,
-    /// Commémoration (position dans le Secondary Pool = signal).
+    Festum       = 1,
+    /// Mémoire (obligatoire ou facultative).
+    Memoria      = 2,
+    /// Férie (y compris les dimanches — cf. spec §4.2).
+    Feria        = 3,
+    /// Commémoration.
     Commemoratio = 4,
     // 5–7 : réservés.
 }
 
 impl Nature {
-    /// Convertit un `u8` en `Nature`. Retourne `Err` pour les valeurs 5–7 et 8–255.
+    /// Décode un octet brut en `Nature`.
+    ///
+    /// Retourne `Err` pour les valeurs 5–7 (réservées) et > 7.
     pub fn try_from_u8(val: u8) -> Result<Self, DomainError> {
         match val {
-            0 => Ok(Nature::Sollemnitas),
-            1 => Ok(Nature::Festum),
-            2 => Ok(Nature::Memoria),
-            3 => Ok(Nature::Feria),
-            4 => Ok(Nature::Commemoratio),
-            _ => Err(DomainError {
-                type_tag: 1,
-                value: val,
-            }),
+            0 => Ok(Self::Sollemnitas),
+            1 => Ok(Self::Festum),
+            2 => Ok(Self::Memoria),
+            3 => Ok(Self::Feria),
+            4 => Ok(Self::Commemoratio),
+            _ => Err(DomainError::InvalidValue(val)),
         }
     }
 }
 
-// ─── 4.3 Color ────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// 4.3 Color — bits 4–7 de `flags` (4 bits, masque 0x0F après >> 4)
+// ─────────────────────────────────────────────────────────────────────────────
 
-/// Couleur liturgique post-Vatican II (specification.md §4.3).
+/// Couleur liturgique post-Vatican II.
 ///
-/// Largeur 4 bits dans `flags` (valeurs 0–6 définies, 7–15 réservés).
-/// `try_from_u8` retourne `Err` pour les valeurs 6–15.
+/// Largeur portée de 3 bits (v1.0) à 4 bits (v2.0) pour extensibilité future.
+/// Valeurs 0–5 définies, 6–15 réservées.
+///
+/// `PartialOrd`/`Ord` dérivés par discriminant — sans signification liturgique.
 #[repr(u8)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Color {
     /// Blanc — fêtes du Seigneur, Vierge, Confesseurs, Docteurs.
-    Albus = 0,
+    Albus     = 0,
     /// Rouge — Passion, Apôtres, Martyrs, Pentecôte.
-    Rubeus = 1,
-    /// Vert — Temps ordinaire.
-    Viridis = 2,
+    Rubeus    = 1,
+    /// Vert — temps ordinaire.
+    Viridis   = 2,
     /// Violet — Avent, Carême.
     Violaceus = 3,
     /// Rose — Gaudete (Avent III), Laetare (Carême IV).
-    Roseus = 4,
-    /// Noir — Messes des défunts.
-    Niger = 5,
-    // 6 : usage liturgique futur (or/argent — optionnel selon usages diocésains).
+    Roseus    = 4,
+    /// Noir — messes des défunts.
+    Niger     = 5,
+    // 6 : usage liturgique futur (or, argent — optionnel selon usages diocésains).
     // 7–15 : réservés.
 }
 
 impl Color {
-    /// Convertit un `u8` en `Color`. Retourne `Err` pour les valeurs 6–15 et 16–255.
+    /// Décode un octet brut en `Color`.
+    ///
+    /// Retourne `Err` pour les valeurs 6–15 (réservées ou futur usage).
     pub fn try_from_u8(val: u8) -> Result<Self, DomainError> {
         match val {
-            0 => Ok(Color::Albus),
-            1 => Ok(Color::Rubeus),
-            2 => Ok(Color::Viridis),
-            3 => Ok(Color::Violaceus),
-            4 => Ok(Color::Roseus),
-            5 => Ok(Color::Niger),
-            _ => Err(DomainError {
-                type_tag: 2,
-                value: val,
-            }),
+            0 => Ok(Self::Albus),
+            1 => Ok(Self::Rubeus),
+            2 => Ok(Self::Viridis),
+            3 => Ok(Self::Violaceus),
+            4 => Ok(Self::Roseus),
+            5 => Ok(Self::Niger),
+            _ => Err(DomainError::InvalidValue(val)),
         }
     }
 }
 
-// ─── 4.4 Season ───────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// 4.4 LiturgicalPeriod — bits 8–10 de `flags` (3 bits)
+// ─────────────────────────────────────────────────────────────────────────────
 
-/// Saison liturgique (specification.md §4.4).
+/// Période opérationnelle résolue (cache AOT).
 ///
-/// Champ cache AOT : calculé par la Forge, non recalculé par l'Engine.
-/// Largeur 3 bits dans `flags` (valeur 7 réservée).
+/// Projection technique matérialisée par la Forge — pas une taxonomie du Missel.
+/// `DiesSancti` (Semaine Sainte) est un variant pleinement valide bien
+/// qu'hétérogène sur le plan liturgique strict.
+///
+/// Ce type est le "firewall sémantique" décrit dans l'ADR :
+/// il encode des segments mutuellement exclusifs indispensables au pipeline
+/// déterministe. Toute tentative de "purification" runtime briserait l'invariant O(1).
+///
+/// Accès : `(flags >> 8) & 0x0007` — opération bitwise unique, SIMD-compatible.
 #[repr(u8)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub enum Season {
-    /// Temps ordinaire (état par défaut).
-    TempusOrdinarium = 0,
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum LiturgicalPeriod {
+    /// Temps ordinaire (état par défaut, valeur 0).
+    TempusOrdinarium    = 0,
     /// Avent.
-    TempusAdventus = 1,
+    TempusAdventus      = 1,
     /// Temps de Noël.
-    TempusNativitatis = 2,
+    TempusNativitatis   = 2,
     /// Carême.
     TempusQuadragesimae = 3,
     /// Triduum Pascal.
-    TriduumPaschale = 4,
+    TriduumPaschale     = 4,
     /// Temps pascal.
-    TempusPaschale = 5,
-    /// Semaine Sainte (Rameaux–Mercredi Saint).
-    DiesSancti = 6,
+    TempusPaschale      = 5,
+    /// Semaine Sainte (Rameaux inclus → Mercredi Saint inclus).
+    /// Variant opérationnel — subdivision du Carême, non du Missel strict.
+    DiesSancti          = 6,
     // 7 : réservé.
 }
 
-impl Season {
-    /// Convertit un `u8` en `Season`. Retourne `Err` pour la valeur 7 et 8–255.
+impl LiturgicalPeriod {
+    /// Décode un octet brut en `LiturgicalPeriod`.
+    ///
+    /// Retourne `Err` pour la valeur 7 (réservée) et > 7.
     pub fn try_from_u8(val: u8) -> Result<Self, DomainError> {
         match val {
-            0 => Ok(Season::TempusOrdinarium),
-            1 => Ok(Season::TempusAdventus),
-            2 => Ok(Season::TempusNativitatis),
-            3 => Ok(Season::TempusQuadragesimae),
-            4 => Ok(Season::TriduumPaschale),
-            5 => Ok(Season::TempusPaschale),
-            6 => Ok(Season::DiesSancti),
-            _ => Err(DomainError {
-                type_tag: 3,
-                value: val,
-            }),
+            0 => Ok(Self::TempusOrdinarium),
+            1 => Ok(Self::TempusAdventus),
+            2 => Ok(Self::TempusNativitatis),
+            3 => Ok(Self::TempusQuadragesimae),
+            4 => Ok(Self::TriduumPaschale),
+            5 => Ok(Self::TempusPaschale),
+            6 => Ok(Self::DiesSancti),
+            _ => Err(DomainError::InvalidValue(val)),
         }
     }
 }
 
-// ─── Tests ────────────────────────────────────────────────────────────────────
-
+// ─────────────────────────────────────────────────────────────────────────────
+// Tests unitaires — tâche 1.1 roadmap
+// ─────────────────────────────────────────────────────────────────────────────
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    // Macro de roundtrip : try_from_u8(v as u8) == Ok(v) pour chaque variant.
+    // Macro : roundtrip try_from_u8(v as u8) == Ok(v) pour chaque variant.
     macro_rules! roundtrip_all {
-        ($T:ty, [$($v:expr),+ $(,)?]) => {
-            $( assert_eq!(<$T>::try_from_u8($v as u8), Ok($v)); )+
+        ($enum:ident, [$($val:expr),+]) => {
+            $(
+                let v = $val;
+                assert_eq!($enum::try_from_u8(v as u8), Ok(v),
+                    "{}: roundtrip échoué pour {:?}", stringify!($enum), v);
+            )+
         };
     }
 
     #[test]
     fn precedence_roundtrip() {
-        roundtrip_all!(
-            Precedence,
-            [
-                Precedence::TriduumSacrum,
-                Precedence::SollemnitatesFixaeMaior,
-                Precedence::DominicaePrivilegiataeMaior,
-                Precedence::FeriaePrivilegiataeMaior,
-                Precedence::SollemnitatesGenerales,
-                Precedence::SollemnitatesPropria,
-                Precedence::FestaDomini,
-                Precedence::DominicaePerAnnum,
-                Precedence::FestaBMVEtSanctorumGenerales,
-                Precedence::FestaPropria,
-                Precedence::FeriaeAdventusEtOctavaNativitatis,
-                Precedence::MemoriaeObligatoriae,
-                Precedence::FeriaePerAnnumEtMemoriaeAdLibitum,
-            ]
-        );
+        roundtrip_all!(Precedence, [
+            Precedence::TriduumSacrum,
+            Precedence::SollemnitatesFixaeMaior,
+            Precedence::DominicaePrivilegiataeMaior,
+            Precedence::FeriaePrivilegiataeMaior,
+            Precedence::SollemnitatesGenerales,
+            Precedence::SollemnitatesPropria,
+            Precedence::FestaDomini,
+            Precedence::DominicaePerAnnum,
+            Precedence::FestaBMVEtSanctorumGenerales,
+            Precedence::FestaPropria,
+            Precedence::FeriaeAdventusEtOctavaNativitatis,
+            Precedence::MemoriaeObligatoriae,
+            Precedence::FeriaePerAnnumEtMemoriaeAdLibitum
+        ]);
     }
 
     #[test]
-    fn precedence_reserved_values_are_err() {
-        // Valeurs 13–15 réservées système (V2 de la spec interdit ces valeurs YAML).
-        for v in [13u8, 14, 15, 16, 255] {
-            assert!(
-                Precedence::try_from_u8(v).is_err(),
-                "Precedence::try_from_u8({v}) devrait être Err"
-            );
-        }
+    fn precedence_reserved_values_are_errors() {
+        // Valeurs 13–15 réservées système — V2 les interdit (spec §4.1).
+        assert_eq!(Precedence::try_from_u8(13), Err(DomainError::InvalidValue(13)));
+        assert_eq!(Precedence::try_from_u8(14), Err(DomainError::InvalidValue(14)));
+        assert_eq!(Precedence::try_from_u8(15), Err(DomainError::InvalidValue(15)));
     }
 
     #[test]
     fn nature_roundtrip() {
-        roundtrip_all!(
-            Nature,
-            [
-                Nature::Sollemnitas,
-                Nature::Festum,
-                Nature::Memoria,
-                Nature::Feria,
-                Nature::Commemoratio,
-            ]
-        );
+        roundtrip_all!(Nature, [
+            Nature::Sollemnitas,
+            Nature::Festum,
+            Nature::Memoria,
+            Nature::Feria,
+            Nature::Commemoratio
+        ]);
     }
 
     #[test]
-    fn nature_reserved_values_are_err() {
-        for v in [5u8, 6, 7, 255] {
-            assert!(Nature::try_from_u8(v).is_err());
+    fn nature_reserved_are_errors() {
+        for v in 5u8..=7 {
+            assert_eq!(Nature::try_from_u8(v), Err(DomainError::InvalidValue(v)));
         }
     }
 
     #[test]
     fn color_roundtrip() {
-        roundtrip_all!(
-            Color,
-            [
-                Color::Albus,
-                Color::Rubeus,
-                Color::Viridis,
-                Color::Violaceus,
-                Color::Roseus,
-                Color::Niger,
-            ]
-        );
+        roundtrip_all!(Color, [
+            Color::Albus,
+            Color::Rubeus,
+            Color::Viridis,
+            Color::Violaceus,
+            Color::Roseus,
+            Color::Niger
+        ]);
     }
 
     #[test]
-    fn color_reserved_values_are_err() {
-        // Valeurs 6–15 réservées (4 bits dans flags, 7–15 réservés ; 6 = usage futur).
-        for v in [6u8, 7, 15, 16, 255] {
-            assert!(Color::try_from_u8(v).is_err());
+    fn color_reserved_are_errors() {
+        for v in 6u8..=15 {
+            assert_eq!(Color::try_from_u8(v), Err(DomainError::InvalidValue(v)));
         }
     }
 
     #[test]
-    fn season_roundtrip() {
-        roundtrip_all!(
-            Season,
-            [
-                Season::TempusOrdinarium,
-                Season::TempusAdventus,
-                Season::TempusNativitatis,
-                Season::TempusQuadragesimae,
-                Season::TriduumPaschale,
-                Season::TempusPaschale,
-                Season::DiesSancti,
-            ]
-        );
+    fn liturgical_period_roundtrip() {
+        roundtrip_all!(LiturgicalPeriod, [
+            LiturgicalPeriod::TempusOrdinarium,
+            LiturgicalPeriod::TempusAdventus,
+            LiturgicalPeriod::TempusNativitatis,
+            LiturgicalPeriod::TempusQuadragesimae,
+            LiturgicalPeriod::TriduumPaschale,
+            LiturgicalPeriod::TempusPaschale,
+            LiturgicalPeriod::DiesSancti
+        ]);
     }
 
     #[test]
-    fn season_reserved_values_are_err() {
-        for v in [7u8, 8, 255] {
-            assert!(Season::try_from_u8(v).is_err());
-        }
-    }
-
-    #[test]
-    fn precedence_ordering_is_inverse() {
-        // Valeur numérique inverse : valeur plus faible = priorité plus haute.
-        // TriduumSacrum (0) est strictement inférieur à tout autre rang.
-        assert!(Precedence::TriduumSacrum < Precedence::SollemnitatesFixaeMaior);
-        assert!(Precedence::SollemnitatesFixaeMaior < Precedence::MemoriaeObligatoriae);
-        assert!(Precedence::MemoriaeObligatoriae < Precedence::FeriaePerAnnumEtMemoriaeAdLibitum);
+    fn liturgical_period_reserved_is_error() {
+        assert_eq!(LiturgicalPeriod::try_from_u8(7), Err(DomainError::InvalidValue(7)));
     }
 }

@@ -1,30 +1,35 @@
-// build.rs — Génération optionnelle du header C kal_engine.h.
+// build.rs — liturgical-calendar-core
 //
-// Activé uniquement avec : cargo build --features gen-headers
-// Cela isole cbindgen en build-dependency optionnelle et ne pollue pas
-// `cargo tree -p liturgical-calendar-core` en mode standard.
+// La génération de kal_engine.h est une étape manuelle, hors CI standard.
+// Elle est déclenchée uniquement via :
+//   cargo build -p liturgical-calendar-core --features gen-headers
+//
+// Spec §1.5 (roadmap) : cbindgen conditionnée par `#[cfg(feature = "gen-headers")]`.
 
 fn main() {
     #[cfg(feature = "gen-headers")]
-    {
-        let crate_dir = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR non défini");
+    generate_headers();
+}
 
-        let config =
-            cbindgen::Config::from_file("cbindgen.toml").expect("Impossible de lire cbindgen.toml");
+#[cfg(feature = "gen-headers")]
+fn generate_headers() {
+    use std::env;
+    use std::path::PathBuf;
 
-        cbindgen::Builder::new()
-            .with_crate(&crate_dir)
-            .with_config(config)
-            .generate()
-            .expect("Échec de génération cbindgen")
-            .write_to_file("kal_engine.h");
+    let crate_dir = env::var("CARGO_MANIFEST_DIR")
+        .expect("CARGO_MANIFEST_DIR non défini");
 
-        println!("cargo:warning=kal_engine.h généré avec succès.");
-    }
+    let config = cbindgen::Config::from_file(
+        PathBuf::from(&crate_dir).join("cbindgen.toml")
+    )
+    .expect("Impossible de lire cbindgen.toml");
 
-    // Invalider le cache si les sources FFI changent.
-    println!("cargo:rerun-if-changed=src/ffi.rs");
-    println!("cargo:rerun-if-changed=src/header.rs");
-    println!("cargo:rerun-if-changed=src/entry.rs");
-    println!("cargo:rerun-if-changed=cbindgen.toml");
+    cbindgen::Builder::new()
+        .with_crate(crate_dir)
+        .with_config(config)
+        .generate()
+        .expect("cbindgen : génération échouée")
+        .write_to_file("kal_engine.h");
+
+    println!("cargo:warning=kal_engine.h généré.");
 }
