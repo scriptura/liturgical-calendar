@@ -1,0 +1,11 @@
+version: 1
+
+history:
+  - from: 1969
+    title: "In Ascensione Domini"
+    precedence: 2
+    nature: sollemnitas
+    color: albus
+    mobile:
+      type: easter_offset
+      offset: 39

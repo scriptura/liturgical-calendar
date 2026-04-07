@@ -1,0 +1,11 @@
+version: 1
+
+history:
+  - from: 1969
+    title: "Sanctissimae Trinitatis"
+    precedence: 3
+    nature: sollemnitas
+    color: albus
+    mobile:
+      type: easter_offset
+      offset: 56

@@ -34,6 +34,7 @@ pub mod ffi;
 // SAFETY : `abort()` est une fonction C garantie disponible sur toutes les
 // cibles supportées (POSIX, WASI, bare-metal via libc stub).
 #[cfg(not(test))]
+#[cfg(not(feature = "std"))]
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
     extern "C" {

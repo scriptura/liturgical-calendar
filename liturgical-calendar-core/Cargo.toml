@@ -24,3 +24,6 @@ cbindgen = { version = "0.27", optional = true }
 [features]
 # INV : feature déclarée explicitement pour éviter unexpected_cfg sous -D warnings (Cargo 1.75+).
 gen-headers = ["cbindgen"]
+# Par défaut, on reste pur (no_std). 
+# On ne met rien dans "default" pour forcer la pureté.
+std = []
