@@ -5,8 +5,8 @@
 **Workspace** : `liturgical-calendar-forge` (std) / `liturgical-calendar-core` (no_std, no_alloc)  
 **Langage Domaine** : Latin (Strictement Canonique)  
 **Déterminisme** : Bit-for-bit reproductible  
-**Date de Révision** : 2026-04-09  
-**Version** : 2.0.4
+**Date de Révision** : 2026-04-09 — GELÉ  
+**Version** : 2.0.5 ❄️
 
 ---
 
@@ -478,9 +478,19 @@ La Forge exécute **6 étapes ordonnées et séquentielles**. Un échec dans une
 
 ### Étape 1 — Rule Parsing
 
-Ingestion des fichiers YAML, validation syntaxique, construction du `FeastRegistry`. Application des validations V1–V6, V-T1–V-T3 (§10). Toute violation est fatale — aucune sortie partielle.
+Ingestion des fichiers YAML, validation syntaxique, construction du `FeastRegistry`. Application des validations V1–V6, V-T1–V-T4 (§10). Toute violation est fatale — aucune sortie partielle.
 
 Le YAML est traité comme un **graphe de données pur** : aucun champ textuel (`title`, `name`, …) n'est présent ni attendu. Les structs de désérialisation Rust rejettent tout champ inconnu via `#[serde(deny_unknown_fields)]` — la présence d'un `title:` produit `ParseError::MalformedYaml`.
+
+**Desugaring de l'ancre `pentecostes` :**
+
+L'ancre `pentecostes` est un **alias statique**. La Forge la résout à l'Étape 1, avant toute construction du graphe de dépendances, comme équivalence stricte :
+
+```
+anchor: pentecostes  →  anchor: pascha, offset: 49
+```
+
+Cette substitution est effectuée in-place sur la représentation intermédiaire. Aucune entrée `pentecostes` n'existe dans le graphe de dépendances — seules `pascha` et `adventus` sont des ancres primitives. La validation V4 (cycles, §8 scheme Groupe D) opère exclusivement sur les ancres désucrantées.
 
 **INV-FORGE-1 — Ordre d'ingestion canonique et déterministe :**
 
@@ -1037,6 +1047,7 @@ Les `flags` encodent le **statut résolu au moment de la compilation**, pas le s
 | `flags` bits 14–15 toujours nuls                      | `flags & 0xC000 == 0`                         | `ForgeError::FlagsReservedBitSet` |
 | `secondary_count == 0` ⟹ `secondary_index` ignoré     | Vérifiable à la lecture                       | Avertissement log                 |
 | Padding Entry à doy=59 sur toute année non-bissextile | `entry == { 0, 0, 0, 0, 0 }`                  | `ForgeError::PaddingEntryMissing` |
+| Capacité `secondary_count` (u8 ≤ 255)                 | `secondaries.len() ≤ 255` pour tout slot DOY  | `ForgeError::SecondaryCountOverflow { doy, year, count }` — V12 |
 
 ---
 
@@ -1461,8 +1472,9 @@ Si V11 se déclenche, le remède est d'abord de vérifier que INV-FORGE-2 est re
 | --------- | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **V9**    | `ForgeError::FeastIDMutated { slug, expected_id, found_id, doy, year }` | Le `primary_id` d'une entrée ne correspond pas au FeastID enregistré dans le `FeastRegistry` pour ce slug — corruption interne du pipeline                           |
 | **V10**   | `ForgeError::PaddingEntryMissing { year, doy }`                         | `doy = 59` d'une année non-bissextile ne contient pas la Padding Entry attendue (`primary_id = 0, flags = 0, secondary_count = 0`) — cohérence binaire violée        |
+| **V12**   | `ForgeError::SecondaryCountOverflow { doy, year, count }`               | Le nombre de commémorations/mémoires pour un slot DOY dépasse 255 — capacité du champ `secondary_count: u8` dépassée ; corpus anormalement dense ou corpus malformé  |
 
-**Règle d'interprétation :** tout déclencheur V1–V11, V-T1–V-T3 et V-I1–V-I2 produit un arrêt immédiat. La Forge n'émet aucun artefact partiel (ni `.kald`, ni `.lits`). Les avertissements (`ConflictWarning`) ne sont pas des erreurs — ils n'interrompent pas la compilation mais doivent être traités avant toute mise en production.
+**Règle d'interprétation :** tout déclencheur V1–V12, V-T1–V-T4 et V-I1–V-I2 produit un arrêt immédiat. La Forge n'émet aucun artefact partiel (ni `.kald`, ni `.lits`). Les avertissements (`ConflictWarning`) ne sont pas des erreurs — ils n'interrompent pas la compilation mais doivent être traités avant toute mise en production.
 
 ---
 
@@ -1577,6 +1589,6 @@ Ce document est la **source de vérité unique** pour les Étapes 1 et 1bis du p
 
 ---
 
-**Fin de la Spécification Technique v2.0 — Ready for Implementation**
+**Fin de la Spécification Technique v2.0 — ❄️ GELÉ**
 
-_Document révisé le 2026-04-09 (v2.0.4). Architecture AOT-Only : Engine (`liturgical-calendar-core`) projecteur de mémoire O(1), 4 fonctions FFI, `no_std`/`no_alloc`. Forge (`liturgical-calendar-forge`) compilateur AOT, pipeline en 6 étapes. Format binaire `.kald` v2.0 : Header 64 octets, `CalendarEntry` 8 octets, Secondary Pool. Format `.lits` year-aware : Header 32 octets, Entry Table `(FeastID, from, to, str_offset)`, String Pool UTF-8. Convention DOY 0-based. Plage 1969–2399 (431 ans). Modifications v2.0.2 : slug déduit du stem, `version` remplace `format_version`, bloc `transfers`, V-T1–V-T3. Modifications v2.0.3 : `ResolutionKey` tri canonique. Modifications v2.0.4 : zéro String YAML, dictionnaires i18n, Étape 1bis, `LitsProvider` year-aware, V-I1–V-I2. Contrat de données amont : `liturgical-scheme.md` v1.3._
+_Document révisé le 2026-04-09 (v2.0.5 — GELÉ). Architecture AOT-Only : Engine (`liturgical-calendar-core`) projecteur de mémoire O(1), 4 fonctions FFI, `no_std`/`no_alloc`. Forge (`liturgical-calendar-forge`) compilateur AOT, pipeline en 6 étapes. Format binaire `.kald` v2.0 : Header 64 octets, `CalendarEntry` 8 octets, Secondary Pool. Format `.lits` year-aware : Header 32 octets, Entry Table `(FeastID, from, to, str_offset)`, String Pool UTF-8. Convention DOY 0-based. Plage 1969–2399 (431 ans). Modifications v2.0.2 : slug/version/transfers/V-T1–V-T3. Modifications v2.0.3 : `ResolutionKey`. Modifications v2.0.4 : zéro String YAML, dictionnaires i18n, Étape 1bis, `LitsProvider`, V-I1–V-I2. Corrections v2.0.5 (contrat gelé) : desugaring `pentecostes` (Étape 1) ; V12 `SecondaryCountOverflow` ; V-T1–V-T4 (offset uint > 0) ; V3a étendue aux dates de transfert. Contrat de données amont : `liturgical-scheme.md` v1.3.1._

@@ -1,7 +1,7 @@
 # Roadmap de Développement : Liturgical Calendar v2.0
 
-**Version** : 2.0.4  
-**Date de Révision** : 2026-04-09  
+**Version** : 2.0.5 ❄️  
+**Date de Révision** : 2026-04-09 — GELÉ  
 **Méthodologie** : 3 jalons, chacun produisant un livrable binaire validable indépendamment  
 **Critères de Succès** : Conformité binaire Forge↔Engine · SHA-256 cross-platform · Fuzzing · CI 4 cibles
 
@@ -677,6 +677,6 @@ Serveur HTTP léger wrappant les 4 fonctions FFI de l'Engine. Endpoints : `GET /
 
 ---
 
-**Fin de la Roadmap v2.0 — Ready for Implementation**
+**Fin de la Roadmap v2.0 — ❄️ GELÉ**
 
-_Révisée le 2026-04-09 (v2.0.4). Trois jalons : Binary Foundation, The Compiler, Sanctification. Engine (`liturgical-calendar-core`) : 4 fonctions FFI, `no_std`/`no_alloc`, projecteur de mémoire O(1). Forge (`liturgical-calendar-forge`) : compilateur AOT, pipeline en 6 étapes, logique liturgique complète. Format binaire `.kald` v2.0 : Header 64 octets, `CalendarEntry` 8 octets, Secondary Pool. Format `.lits` year-aware : Header 32 octets, Entry Table `(FeastID, from, to, str_offset)`, String Pool UTF-8. Convention DOY 0-based. Plage 1969–2399 (431 ans). Modifications v2.0.2 : slug déduit du stem, `version` remplace `format_version`, bloc `transfers`. Modifications v2.0.3 : `ResolutionKey` tri canonique, `INV-FORGE-SORT`. Modifications v2.0.4 : zéro String YAML, dictionnaires i18n, Étape 1bis (`i18n.rs`), `LitsProvider` year-aware, V-I1–V-I2. Référence : `specification.md` v2.0.4, `liturgical-scheme.md` v1.3._
+_Révisée le 2026-04-09 (v2.0.5 — GELÉ). Trois jalons : Binary Foundation, The Compiler, Sanctification. Engine (`liturgical-calendar-core`) : 4 fonctions FFI, `no_std`/`no_alloc`, projecteur de mémoire O(1). Forge (`liturgical-calendar-forge`) : compilateur AOT, pipeline en 6 étapes, logique liturgique complète. Format binaire `.kald` v2.0 : Header 64 octets, `CalendarEntry` 8 octets, Secondary Pool. Format `.lits` year-aware : Header 32 octets, Entry Table `(FeastID, from, to, str_offset)`, String Pool UTF-8. Convention DOY 0-based. Plage 1969–2399 (431 ans). Modifications v2.0.2–v2.0.4 : slug/version/transfers/ResolutionKey/i18n/LitsProvider. Corrections v2.0.5 (contrat gelé) : desugaring `pentecostes`, V12, V-T4, V3a étendue. Référence : `specification.md` v2.0.5, `liturgical-scheme.md` v1.3.1._

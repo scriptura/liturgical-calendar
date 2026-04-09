@@ -3,8 +3,8 @@
 **Statut** : Canonique / Source de Vérité YAML  
 **Scope** : `liturgical-calendar-forge` — Étapes 1 (Rule Parsing) et 2 (Canonicalization)  
 **Référence** : `specification.md` v2.0  
-**Date de Révision** : 2026-04-09  
-**Version** : 1.3
+**Date de Révision** : 2026-04-09 — GELÉ  
+**Version** : 1.3.1 ❄️
 
 ---
 
@@ -269,7 +269,7 @@ En l'absence de ce bloc, la Forge applique les règles générales de §3.2–§
 ```yaml
 transfers:
   - collides: <slug_concurrent>  # Slug (stem du fichier) de la fête déclenchante
-    offset: <integer>            # Décalage relatif en jours (signé) si collision
+    offset: <uint>               # Décalage relatif en jours (non signé, > 0) si collision
   - collides: <slug_concurrent>
     date:                        # Date fixe de repli si collision
       month: <1–12>
@@ -281,7 +281,7 @@ transfers:
 | Clé       | Type              | Signification                                                                        |
 | --------- | ----------------- | ------------------------------------------------------------------------------------ |
 | `collides`| String (slug)     | La fête dont la présence sur le même DOY déclenche la règle de transfert             |
-| `offset`  | Integer signé     | Décalage relatif en jours depuis le DOY de collision (positif = vers l'avant)       |
+| `offset`  | **u32 ≥ 1**       | Décalage en jours vers l'avant depuis le DOY de collision — **strictement positif** |
 | `date`    | `{month, day}`    | Date fixe de repli, indépendante du DOY de collision                                 |
 
 **`offset` et `date` sont mutuellement exclusifs.** Une entrée qui déclare les deux est rejetée avec `ParseError::TransferAmbiguous { slug, collides }`. Une entrée qui ne déclare ni l'un ni l'autre est également invalide — la règle serait sans effet.
@@ -318,7 +318,7 @@ transfers:
 ```yaml
 transfers:
   - collides: sacratissimi_cordis_iesu
-    offset: -1
+    offset: 6  # déplacement vers l'avant — V-T4 : offset ≥ 1
   - collides: corpus_christi
     date:
       month: 6
@@ -868,13 +868,19 @@ Violation → `RegistryError::TemporalOverlap { slug, year, conflicting_entries 
 
 ### Groupe C — Intégrité des Dates (V3)
 
-**V3a — Validité des dates fixes**
+**V3a — Validité des dates fixes et des dates de transfert**
 
 ```
 ∀ feast avec date :
   month ∈ [1, 12]
   ∧ day ∈ [1, days_in_month(month)]  (29 fév admis, traitement §3.1)
+
+∀ entrée t ∈ transfers avec t.date présent :
+  t.date.month ∈ [1, 12]
+  ∧ t.date.day ∈ [1, days_in_month(t.date.month)]
 ```
+
+La validation de cohérence calendaire s'applique aussi aux dates de repli déclarées dans le bloc `transfers`. Une date de repli impossible (ex: `month: 2, day: 30`) est rejetée avec le même variant, le champ `slug` désignant la fête porteuse du bloc `transfers`.
 
 Violation → `ParseError::InvalidDate { slug, month, day }`
 
@@ -930,7 +936,7 @@ Violation → `ParseError::InvalidSlugSyntax(String)` — la `String` contient l
 
 Violation → `RegistryError::InvalidPrecedenceValue(u8)` (valeurs 13–15 réservées système)
 
-### Groupe E — Validité du Bloc `transfers` (V-T1, V-T2, V-T3)
+### Groupe E — Validité du Bloc `transfers` (V-T1, V-T2, V-T3, V-T4)
 
 Ces validations sont appliquées durant l'**Étape 1 (Rule Parsing)**, lors de la désérialisation du bloc `transfers`. Tout échec est fatal.
 
@@ -966,6 +972,17 @@ Deux entrées référençant le même slug concurrent produiraient un comporteme
 
 Violation → `ParseError::TransferDuplicateCollides { slug, collides }`
 
+**V-T4 — Offset de transfert strictement positif**
+
+```
+∀ entrée t ∈ transfers avec t.offset présent :
+  t.offset ≥ 1
+```
+
+Le transfert est, par invariant architectural, un déplacement **vers l'avant** uniquement. Un `offset = 0` serait un no-op (la fête resterait sur le slot de collision). Un `offset` négatif serait un déplacement vers le passé, incompatible avec la garantie de terminaison de la `TransferQueue` (transferts strictement croissants en DOY — spec §3.3 Passe 4). Le type YAML est désérialisé en `u32` — toute valeur YAML négative ou nulle est rejetée à la désérialisation.
+
+Violation → `ParseError::TransferOffsetNotPositive { slug, collides, offset }`
+
 ### Groupe F — Corrélation YAML ↔ Dictionnaires i18n (V-I1, V-I2)
 
 Ces validations sont appliquées durant l'**Étape 1bis (i18n Resolution)**. Elles opèrent après la construction complète du `FeastRegistry` — tous les slugs et toutes les plages `[from, to]` sont connus. Tout échec est fatal.
@@ -996,7 +1013,7 @@ Violation → `ParseError::I18nOrphanKey { slug, lang, from, field }`
 
 ### Tableau de Correspondance Spec §10 ↔ Ce Document
 
-Ce tableau est la clé de lecture bidirectionnelle entre les codes d'erreur Rust (spec §10) et les groupes de validation de ce document. Les codes V1–V6 et V-T1–V-T3 sont les seuls identifiants à utiliser dans le code et les messages d'erreur produits par la Forge.
+Ce tableau est la clé de lecture bidirectionnelle entre les codes d'erreur Rust (spec §10) et les groupes de validation de ce document. Les codes V1–V6, V-T1–V-T4 et V-I1–V-I2 sont les seuls identifiants à utiliser dans le code et les messages d'erreur produits par la Forge.
 
 | Code spec §10 | Variant Rust (`RegistryError` / `ParseError`)         | Groupe §8      | Libellé                                                         |
 | ------------- | ----------------------------------------------------- | -------------- | --------------------------------------------------------------- |
@@ -1020,6 +1037,7 @@ Ce tableau est la clé de lecture bidirectionnelle entre les codes d'erreur Rust
 | `ParseError::TransferEmpty { slug, collides }`            | **E — V-T1** | Entrée `transfers` sans `offset` ni `date`                      |
 | `ParseError::UnknownCollidesTarget { slug, collides }`    | **E — V-T2** | Slug `collides` absent du `FeastRegistry`                       |
 | `ParseError::TransferDuplicateCollides { slug, collides }` | **E — V-T3** | Deux entrées `transfers` référencent le même concurrent         |
+| `ParseError::TransferOffsetNotPositive { slug, collides, offset }` | **E — V-T4** | Offset de transfert nul ou négatif — déplacement vers l'avant obligatoire |
 | `ParseError::I18nMissingLatinKey { slug, from, field }`   | **F — V-I1** | Clé `{slug}.{from}.{field}` absente du dictionnaire `i18n/la/` |
 | `ParseError::I18nOrphanKey { slug, lang, from, field }`   | **F — V-I2** | Clé dictionnaire référençant un `from` absent du `history[]`    |
 
@@ -1214,6 +1232,6 @@ Avant de soumettre un fichier YAML à la Forge :
 
 ---
 
-**Fin du Contrat de Données Amont v1.3**
+**Fin du Contrat de Données Amont v1.3.1 — ❄️ GELÉ**
 
-_Document créé le 2026-03-07. Révisé le 2026-04-09 (v1.3). Contrat de données amont de la Forge (`liturgical-calendar-forge`). Modifications v1.2 : slug déduit du stem, `version` remplace `format_version`, bloc `transfers`, Groupe E (V-T1–V-T3). Modifications v1.3 : séparation canon/labels — zéro String dans le YAML ; dictionnaires i18n externes ; identité `{slug}.{from}.{field}` ; Groupe F (V-I1, V-I2) ; §4.4 ; §9.5. Référence : `specification.md` v2.0, §3–§5, §10._
+_Document créé le 2026-03-07. Révisé le 2026-04-09 (v1.3.1 — GELÉ). Modifications v1.2 : slug/version/transfers/Groupe E. Modifications v1.3 : zéro String YAML, dictionnaires i18n, Groupe F (V-I1, V-I2), §4.4, §9.5. Corrections v1.3.1 (contrat gelé) : V-T4 (offset uint strictement positif) ; V3a étendue aux dates de transfert ; exemple `offset` corrigé. Référence : `specification.md` v2.0.5._
