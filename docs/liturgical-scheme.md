@@ -161,8 +161,8 @@ feasts:
 
     # Transferts déclaratifs — optionnel — voir §2.4
     transfers:
-      - collides: <slug_concurrent>  # Slug (= stem du fichier) de la fête en collision
-        offset: <integer>            # OU date: — exclusifs — voir §2.4
+      - collides: <slug_concurrent> # Slug (= stem du fichier) de la fête en collision
+        offset: <integer> # OU date: — exclusifs — voir §2.4
       - collides: <slug_concurrent>
         date:
           month: <1–12>
@@ -268,21 +268,21 @@ En l'absence de ce bloc, la Forge applique les règles générales de §3.2–§
 
 ```yaml
 transfers:
-  - collides: <slug_concurrent>  # Slug (stem du fichier) de la fête déclenchante
-    offset: <uint>               # Décalage relatif en jours (non signé, > 0) si collision
+  - collides: <slug_concurrent> # Slug (stem du fichier) de la fête déclenchante
+    offset: <uint> # Décalage relatif en jours (non signé, > 0) si collision
   - collides: <slug_concurrent>
-    date:                        # Date fixe de repli si collision
+    date: # Date fixe de repli si collision
       month: <1–12>
       day: <1–31>
 ```
 
 ### Sémantique
 
-| Clé       | Type              | Signification                                                                        |
-| --------- | ----------------- | ------------------------------------------------------------------------------------ |
-| `collides`| String (slug)     | La fête dont la présence sur le même DOY déclenche la règle de transfert             |
-| `offset`  | **u32 ≥ 1**       | Décalage en jours vers l'avant depuis le DOY de collision — **strictement positif** |
-| `date`    | `{month, day}`    | Date fixe de repli, indépendante du DOY de collision                                 |
+| Clé        | Type           | Signification                                                                       |
+| ---------- | -------------- | ----------------------------------------------------------------------------------- |
+| `collides` | String (slug)  | La fête dont la présence sur le même DOY déclenche la règle de transfert            |
+| `offset`   | **u32 ≥ 1**    | Décalage en jours vers l'avant depuis le DOY de collision — **strictement positif** |
+| `date`     | `{month, day}` | Date fixe de repli, indépendante du DOY de collision                                |
 
 **`offset` et `date` sont mutuellement exclusifs.** Une entrée qui déclare les deux est rejetée avec `ParseError::TransferAmbiguous { slug, collides }`. Une entrée qui ne déclare ni l'un ni l'autre est également invalide — la règle serait sans effet.
 
@@ -318,7 +318,7 @@ transfers:
 ```yaml
 transfers:
   - collides: sacratissimi_cordis_iesu
-    offset: 6  # déplacement vers l'avant — V-T4 : offset ≥ 1
+    offset: 6 # déplacement vers l'avant — V-T4 : offset ≥ 1
   - collides: corpus_christi
     date:
       month: 6
@@ -446,9 +446,9 @@ history:
   - from: <year> # Borne inférieure inclusive. Défaut : 1969 si omis.
     to: <year|~> # Borne supérieure inclusive. null (ou omis) = indéfini.
     precedence: <0–12> # Rang liturgique effectif.
-    nature: <string>   # Voir §6.2.
-    color: <string>    # Voir §6.3.
-    season: <string>   # Optionnel — voir §2.3 et §6.4.
+    nature: <string> # Voir §6.2.
+    color: <string> # Voir §6.3.
+    season: <string> # Optionnel — voir §2.3 et §6.4.
     # Aucun champ textuel (title, name…) : labels externalisés dans i18n/{lang}/{slug}.yaml (§4.4)
 ```
 
@@ -572,11 +572,11 @@ La clé de premier niveau est l'année `from` du bloc `history` concerné. Les s
 
 L'identité d'un label est la clé composite `{slug}.{from}.{field}` :
 
-| Composant | Source | Exemple |
-|-----------|--------|---------|
-| `slug` | stem du fichier dictionnaire | `nativitas_domini` |
-| `from` | clé de premier niveau YAML | `1969` |
-| `field` | sous-clé | `title` |
+| Composant | Source                       | Exemple            |
+| --------- | ---------------------------- | ------------------ |
+| `slug`    | stem du fichier dictionnaire | `nativitas_domini` |
+| `from`    | clé de premier niveau YAML   | `1969`             |
+| `field`   | sous-clé                     | `title`            |
 
 → Clé : `nativitas_domini.1969.title`
 
@@ -781,22 +781,22 @@ Si omis dans le YAML, la Forge calcule la saison depuis les `SeasonBoundaries` d
 
 Tableau de correspondance complet entre les champs YAML et les champs binaires de `CalendarEntry` (spec §3.3–3.4) :
 
-| Champ YAML                        | Type YAML           | Destination binaire                | Offset | Note                                                             |
-| --------------------------------- | ------------------- | ---------------------------------- | ------ | ---------------------------------------------------------------- |
-| *(stem du nom de fichier)*        | —                   | —                                  | —      | Slug : clé FeastRegistry. Déduit du chemin. Absent du `.kald`.  |
-| `id`                              | u16 \| null         | `CalendarEntry.primary_id`         | 0      | Alloué par la Forge si absent.                                   |
-| `date.month` + `date.day`         | Integer             | DOY 0-based (formule §3.1)         | —      | Formule : `MONTH_STARTS[month-1] + day - 1`                      |
-| `mobile.anchor` + `mobile.offset` | String + Integer    | DOY 0-based (Étape 2)              | —      | Résolution Pâques + offset                                       |
-| `transfers[]`                     | Tableau             | —                                  | —      | Consommé exclusivement par la Passe 3 de l'Étape 3. Absent du `.kald`. |
-| —                                 | —                   | `CalendarEntry.secondary_index`    | 2      | Alimenté par Étape 4 (Materialization)                           |
-| `history[].precedence`            | Integer [0–12]      | `CalendarEntry.flags` bits [3:0]   | 4      |                                                                  |
-| `history[].color`                 | String enum         | `CalendarEntry.flags` bits [7:4]   | 4      |                                                                  |
-| `history[].season`                | String enum \| null | `CalendarEntry.flags` bits [10:8]  | 4      | Calculé si absent                                                |
-| `history[].nature`                | String enum         | `CalendarEntry.flags` bits [13:11] | 4      |                                                                  |
-| —                                 | —                   | `CalendarEntry.secondary_count`    | 6      | Alimenté par Étape 3 (Conflict Resolution)                       |
-| *(clé `{slug}.{from}.{field}`)*   | —                   | Fichier `.lits`                    | —      | Clé implicite. Résolue via dictionnaires i18n (Étape 1bis). Absent du `.kald`. |
-| `scope`                           | String enum         | FeastID bits [15:14]               | —      | `universal=00`, `national=01`, `diocesan=10`                     |
-| `category`                        | Integer [0–3]       | FeastID bits [13:12]               | —      |                                                                  |
+| Champ YAML                        | Type YAML           | Destination binaire                | Offset | Note                                                                           |
+| --------------------------------- | ------------------- | ---------------------------------- | ------ | ------------------------------------------------------------------------------ |
+| _(stem du nom de fichier)_        | —                   | —                                  | —      | Slug : clé FeastRegistry. Déduit du chemin. Absent du `.kald`.                 |
+| `id`                              | u16 \| null         | `CalendarEntry.primary_id`         | 0      | Alloué par la Forge si absent.                                                 |
+| `date.month` + `date.day`         | Integer             | DOY 0-based (formule §3.1)         | —      | Formule : `MONTH_STARTS[month-1] + day - 1`                                    |
+| `mobile.anchor` + `mobile.offset` | String + Integer    | DOY 0-based (Étape 2)              | —      | Résolution Pâques + offset                                                     |
+| `transfers[]`                     | Tableau             | —                                  | —      | Consommé exclusivement par la Passe 3 de l'Étape 3. Absent du `.kald`.         |
+| —                                 | —                   | `CalendarEntry.secondary_index`    | 2      | Alimenté par Étape 4 (Materialization)                                         |
+| `history[].precedence`            | Integer [0–12]      | `CalendarEntry.flags` bits [3:0]   | 4      |                                                                                |
+| `history[].color`                 | String enum         | `CalendarEntry.flags` bits [7:4]   | 4      |                                                                                |
+| `history[].season`                | String enum \| null | `CalendarEntry.flags` bits [10:8]  | 4      | Calculé si absent                                                              |
+| `history[].nature`                | String enum         | `CalendarEntry.flags` bits [13:11] | 4      |                                                                                |
+| —                                 | —                   | `CalendarEntry.secondary_count`    | 6      | Alimenté par Étape 3 (Conflict Resolution)                                     |
+| _(clé `{slug}.{from}.{field}`)_   | —                   | Fichier `.lits`                    | —      | Clé implicite. Résolue via dictionnaires i18n (Étape 1bis). Absent du `.kald`. |
+| `scope`                           | String enum         | FeastID bits [15:14]               | —      | `universal=00`, `national=01`, `diocesan=10`                                   |
+| `category`                        | Integer [0–3]       | FeastID bits [13:12]               | —      |                                                                                |
 
 > **Rappel layout `CalendarEntry` (spec §3.3) :** `primary_id (u16, off 0)` | `secondary_index (u16, off 2)` | `flags (u16, off 4)` | `secondary_count (u8, off 6)` | `_reserved (u8, off 7)`. Les trois `u16` sont aux offsets pairs — alignement naturel garanti.
 
@@ -1022,24 +1022,24 @@ Ce tableau est la clé de lecture bidirectionnelle entre les codes d'erreur Rust
 | **V3**        | `FeastIDExhausted { scope, category }`                | **B — V2c**    | Capacité FeastID ≤ 4095 par (scope, category)                   |
 | **V4**        | `InvalidTemporalRange { from, to }`                   | **C — V3b**    | Cohérence et bornes des plages `[from, to]` dans `[1969, 2399]` |
 | **V5**        | `UnknownNatureString(String)`                         | **D — V5**     | Nature conforme aux 5 enums admis                               |
-| **V6**        | `InvalidSlugSyntax(String)`                           | **D — V6**     | Stem fichier : `[a-z][a-z0-9_]*` — validé avant parsing YAML   |
+| **V6**        | `InvalidSlugSyntax(String)`                           | **D — V6**     | Stem fichier : `[a-z][a-z0-9_]*` — validé avant parsing YAML    |
 
 **Validations §8 sans code V-numéroté dans la spec** (erreurs structurelles de parsing) :
 
-| Variant Rust                                              | Groupe §8    | Libellé                                                         |
-| --------------------------------------------------------- | ------------ | --------------------------------------------------------------- |
-| `ParseError::MalformedYaml` / `UnsupportedSchemaVersion`  | **A — V1**   | Syntaxe YAML invalide ou `version != 1`                         |
-| `RegistryError::DuplicateSlug { slug, scope }`            | **B — V2a**  | Collision de slug dans le même scope (même stem, même répertoire scope) |
-| `RegistryError::FeastIDConflict { id, slug_a, slug_b }`   | **B — V2b**  | Collision sur `id` explicite                                    |
-| `ParseError::InvalidDate { slug, month, day }`            | **C — V3a**  | Date fixe impossible (ex: 30 février)                           |
-| `ParseError::CircularDependency { slug, anchor }`         | **D — V4**   | Cycle dans le graphe des ancres mobiles                         |
-| `ParseError::TransferAmbiguous { slug, collides }`        | **E — V-T1** | Entrée `transfers` avec `offset` et `date` simultanément        |
-| `ParseError::TransferEmpty { slug, collides }`            | **E — V-T1** | Entrée `transfers` sans `offset` ni `date`                      |
-| `ParseError::UnknownCollidesTarget { slug, collides }`    | **E — V-T2** | Slug `collides` absent du `FeastRegistry`                       |
-| `ParseError::TransferDuplicateCollides { slug, collides }` | **E — V-T3** | Deux entrées `transfers` référencent le même concurrent         |
+| Variant Rust                                                       | Groupe §8    | Libellé                                                                   |
+| ------------------------------------------------------------------ | ------------ | ------------------------------------------------------------------------- |
+| `ParseError::MalformedYaml` / `UnsupportedSchemaVersion`           | **A — V1**   | Syntaxe YAML invalide ou `version != 1`                                   |
+| `RegistryError::DuplicateSlug { slug, scope }`                     | **B — V2a**  | Collision de slug dans le même scope (même stem, même répertoire scope)   |
+| `RegistryError::FeastIDConflict { id, slug_a, slug_b }`            | **B — V2b**  | Collision sur `id` explicite                                              |
+| `ParseError::InvalidDate { slug, month, day }`                     | **C — V3a**  | Date fixe impossible (ex: 30 février)                                     |
+| `ParseError::CircularDependency { slug, anchor }`                  | **D — V4**   | Cycle dans le graphe des ancres mobiles                                   |
+| `ParseError::TransferAmbiguous { slug, collides }`                 | **E — V-T1** | Entrée `transfers` avec `offset` et `date` simultanément                  |
+| `ParseError::TransferEmpty { slug, collides }`                     | **E — V-T1** | Entrée `transfers` sans `offset` ni `date`                                |
+| `ParseError::UnknownCollidesTarget { slug, collides }`             | **E — V-T2** | Slug `collides` absent du `FeastRegistry`                                 |
+| `ParseError::TransferDuplicateCollides { slug, collides }`         | **E — V-T3** | Deux entrées `transfers` référencent le même concurrent                   |
 | `ParseError::TransferOffsetNotPositive { slug, collides, offset }` | **E — V-T4** | Offset de transfert nul ou négatif — déplacement vers l'avant obligatoire |
-| `ParseError::I18nMissingLatinKey { slug, from, field }`   | **F — V-I1** | Clé `{slug}.{from}.{field}` absente du dictionnaire `i18n/la/` |
-| `ParseError::I18nOrphanKey { slug, lang, from, field }`   | **F — V-I2** | Clé dictionnaire référençant un `from` absent du `history[]`    |
+| `ParseError::I18nMissingLatinKey { slug, from, field }`            | **F — V-I1** | Clé `{slug}.{from}.{field}` absente du dictionnaire `i18n/la/`            |
+| `ParseError::I18nOrphanKey { slug, lang, from, field }`            | **F — V-I2** | Clé dictionnaire référençant un `from` absent du `history[]`              |
 
 ---
 
@@ -1189,12 +1189,12 @@ history:
 
 **Clés implicites résolues par la Forge :**
 
-| Clé composite              | Source  | Valeur résolue                   |
-|----------------------------|---------|----------------------------------|
-| `ioannis_pauli_ii.2011.title` | `la` | `"B. Ioannes Paulus II, pp."`    |
-| `ioannis_pauli_ii.2014.title` | `la` | `"S. Ioannes Paulus II, pp."`    |
-| `ioannis_pauli_ii.2011.title` | `fr` | `"B. Ioannes Paulus II, pp."` ← fallback latin |
-| `ioannis_pauli_ii.2014.title` | `fr` | `"Saint Jean-Paul II, pape"`     |
+| Clé composite                 | Source | Valeur résolue                                 |
+| ----------------------------- | ------ | ---------------------------------------------- |
+| `ioannis_pauli_ii.2011.title` | `la`   | `"B. Ioannes Paulus II, pp."`                  |
+| `ioannis_pauli_ii.2014.title` | `la`   | `"S. Ioannes Paulus II, pp."`                  |
+| `ioannis_pauli_ii.2011.title` | `fr`   | `"B. Ioannes Paulus II, pp."` ← fallback latin |
+| `ioannis_pauli_ii.2014.title` | `fr`   | `"Saint Jean-Paul II, pape"`                   |
 
 ---
 
@@ -1203,6 +1203,7 @@ history:
 Avant de soumettre un fichier YAML à la Forge :
 
 **Fichier YAML (graphe métier)**
+
 - [ ] `version: 1` présent dans chaque fichier (`format_version` est **supprimé** — erreur fatale si présent)
 - [ ] Le fichier est placé dans le répertoire correct selon son scope : `universale/`, `nationalia/{ISO}/`, `dioecesana/{ID}/`
 - [ ] Le nom du fichier (stem) **est** le slug — aucune clé `slug` dans le corps YAML
@@ -1225,6 +1226,7 @@ Avant de soumettre un fichier YAML à la Forge :
 - [ ] Les fêtes au 29 février (`date.month: 2, date.day: 29`) sont intentionnelles — Padding Entry les années non-bissextiles
 
 **Dictionnaire i18n (à livrer avec tout nouveau fichier YAML)**
+
 - [ ] Un fichier `i18n/la/{slug}.yaml` existe pour chaque fichier YAML soumis
 - [ ] Pour chaque entrée `history[]` avec `from: Y`, une clé `Y: { title: "…" }` est présente dans `i18n/la/{slug}.yaml`
 - [ ] Aucune clé orpheline dans les dictionnaires : toute année `Y` déclarée dans un dictionnaire correspond à un `from: Y` dans le YAML correspondant
