@@ -1,7 +1,7 @@
 # Roadmap de Développement : Liturgical Calendar v2.0
 
-**Version** : 2.0.1  
-**Date de Révision** : 2026-04-05  
+**Version** : 2.0.4  
+**Date de Révision** : 2026-04-09  
 **Méthodologie** : 3 jalons, chacun produisant un livrable binaire validable indépendamment  
 **Critères de Succès** : Conformité binaire Forge↔Engine · SHA-256 cross-platform · Fuzzing · CI 4 cibles
 
@@ -261,6 +261,12 @@ Les enums `Nature`, `Color`, `LiturgicalPeriod` dans `registry.rs` (côté Forge
 évoluer indépendamment mais doivent satisfaire les mêmes contraintes de trait
 (voir §1.1 de cette roadmap, Patch 2).
 
+**INV-FORGE-SORT — `ResolutionKey` est la seule autorité de résolution intra-slot**
+
+Toute désignation `primary` / `secondary` dans un slot DOY passe **exclusivement** par un `sort_unstable_by_key(|f| f.resolution_key())`. Aucun `if/else` conditionnel sur `Precedence`, `Cycle` ou `Temporality` n'est autorisé dans `resolution.rs` en dehors de la garde V7 (Passe 2) et du déclassement saisonnier (§3.4 spec). Toute déviation constitue une violation architecturale — le déterminisme bit-for-bit du `.kald` en dépend.
+
+`ResolutionKey` est définie dans `liturgical-calendar-forge/src/resolution.rs`. Elle n'appartient pas au Core — l'Engine ne trie jamais, il lit.
+
 ---
 
 ### 2.1 Rule Parsing (Étape 1)
@@ -269,19 +275,73 @@ Les enums `Nature`, `Color`, `LiturgicalPeriod` dans `registry.rs` (côté Forge
 
 - Découverte récursive des fichiers YAML depuis `corpus_root` via `CompilationTarget` (liturgical-scheme.md §5.3)
 - Tri lexicographique des fichiers par répertoire avant ingestion (INV-FORGE-1)
+- **Dérivation du slug depuis le stem du nom de fichier** (`path.file_stem()`) — validation `[a-z][a-z0-9_]*` (V6) effectuée **avant** désérialisation YAML. Tout stem invalide → `ParseError::InvalidSlugSyntax(stem)`, le fichier n'est pas parsé.
 - Dérivation du scope et de la region depuis le chemin — validation de cohérence path ↔ contenu (`ParseError::ScopePathMismatch`)
 - Ingestion YAML → structures Rust intermédiaires (`FeastVersionDef`)
+  - Champ attendu : `version: 1` (pas `format_version` — sa présence produit `MalformedYaml` par champ inconnu)
+  - Champ `slug` : **absent du YAML** — fourni par `path.file_stem()` avant désérialisation
 - Construction du `FeastRegistry` (BTreeMap)
+- Désérialisation et validation du bloc `transfers` si présent : V-T1, V-T2, V-T3 (§8 scheme, Groupe E)
 - Application des validations V1–V6 (§10 spec) — erreurs fatales
 - Normalisation : `normalize_color`, `normalize_nature` (allocation `String` autorisée en Forge)
 
-**Convention champs serde réservés :** voir §2.1 invariant de la roadmap — champs YAML futurs préfixés `_` avec `#[serde(rename = "clé_yaml")]`.
+**Convention champs serde réservés :** voir §0.3 de la spec — champs YAML futurs préfixés `_` avec `#[serde(rename = "clé_yaml")]`. Le struct de désérialisation utilise `#[serde(deny_unknown_fields)]` — la présence de tout champ inconnu (ex: `title`) produit `ParseError::MalformedYaml`.
 
-**Test :** corpus atomique minimal (1 fichier `universale/sanctorale/`, 1 fichier `nationalia/{ISO}/sanctorale/`) → `FeastRegistry` construit sans erreur, scope et region correctement déduits du chemin.
+**Test :** corpus atomique minimal (1 fichier `universale/sanctorale/`, 1 fichier `nationalia/{ISO}/sanctorale/`) → slug déduit correctement du stem, `FeastRegistry` construit sans erreur, scope et region correctement déduits du chemin. Vérifier que `format_version: 1` dans un fichier YAML produit `MalformedYaml`. Vérifier que la présence d'un champ `title:` dans un bloc `history[]` produit `MalformedYaml`.
 
 ---
 
-### 2.2 Canonicalization (Étape 2)
+### 2.1bis i18n Resolution (Étape 1bis)
+
+**Fichier :** `liturgical-calendar-forge/src/i18n.rs`
+
+Corrélation entre le `FeastRegistry` et les dictionnaires `i18n/`. Produit le `LabelTable` consommé par l'Étape 6 pour générer les `.lits`.
+
+**Structure `DictStore` :**
+
+```rust
+/// Table des dictionnaires chargés. Clé : (lang, slug, from) → label.
+/// BTreeMap pour garantir l'ordre déterministe cross-build (INV-FORGE-2).
+pub(crate) struct DictStore {
+    entries: BTreeMap<(String, String, u16), BTreeMap<String, String>>,
+    // (lang,    slug,   from)             → { field → value }
+}
+```
+
+**Algorithme :**
+
+```
+1. Découvrir i18n/{lang}/{slug}.yaml pour toutes les langues présentes.
+   Tri lexicographique sur (lang, slug) — ordre déterministe.
+
+2. Pour chaque fichier i18n/{lang}/{slug}.yaml :
+   Désérialiser : BTreeMap<u16 (from), BTreeMap<String (field), String (value)>>
+   Pour chaque (from, fields) :
+     SI from ∉ history_froms(slug) → ParseError::I18nOrphanKey  [V-I2]
+     Insérer dans DictStore[(lang, slug, from)]
+
+3. Pour chaque (slug, from) dans le FeastRegistry :
+   SI DictStore[("la", slug, from)]["title"] absent → ParseError::I18nMissingLatinKey  [V-I1]
+
+4. Construire LabelTable par fusion AOT :
+   Pour chaque (slug, from), pour chaque lang compilée :
+     value = DictStore[(lang, slug, from)]["title"]
+             ?? DictStore[("la", slug, from)]["title"]   // fallback latin garanti par V-I1
+     Insérer dans LabelTable[(feast_id, from)] → value
+```
+
+**Sortie :** `LabelTable` — `BTreeMap<(FeastID, u16 from, u16 to, String lang), String>`. `to` est copié depuis le bloc `history[]` correspondant pour permettre la recherche `(FeastID, year)` dans `LitsProvider::get`.
+
+**Tests :**
+
+- V-I1 : corpus avec `i18n/la/` absent ou clé `from` manquante → `ParseError::I18nMissingLatinKey`, compilation interrompue.
+- V-I2 : dictionnaire `i18n/fr/foo.yaml` avec `from: 2030` alors que `history[]` de `foo` ne contient pas `from: 2030` → `ParseError::I18nOrphanKey`.
+- Fallback AOT : dictionnaire `fr` sans clé `from: 2011` → le `LabelTable` contient la valeur latine pour `(feast_id, 2011, lang="fr")`.
+- Déterminisme : deux exécutions avec le même corpus → `LabelTable` identique octet par octet.
+
+---
+
+### 2.2 Canonicalization (Étape 3)
 
 **Fichier :** `liturgical-calendar-forge/src/canonicalization.rs`
 
@@ -300,21 +360,51 @@ Les enums `Nature`, `Color`, `LiturgicalPeriod` dans `registry.rs` (côté Forge
 
 ---
 
-### 2.3 Conflict Resolution (Étape 3)
+### 2.3 Conflict Resolution (Étape 4)
 
 **Fichier :** `liturgical-calendar-forge/src/resolution.rs`
 
-- Résolution des collisions par comparaison de `Precedence` (valeur entière, numérique inverse)
-- Calcul des transferts (fête tombant un dimanche → règles de déplacement du NALC 1969)
-- Sortie : `ResolvedCalendar` — table indexée `(year, doy) → ResolvedDay { primary, secondaries: Vec<FeastId> }`
+**Types à définir dans ce fichier :**
 
-**Règle de collision :** si deux fêtes occupent le même slot, celle de `Precedence` valeur numérique inférieure reste en `primary`. L'autre est soit transférée (si `Precedence ≤ 9` et `Nature ≠ Feria` — voir spec §3.4), soit commémorée (`secondary_feasts`, si `Precedence ∈ [8, 12]`), soit supprimée, selon les règles de résolution spécifiées en §3.2–§3.5 de la spec.
+```rust
+/// Clé de tri canonique — voir spec §3.0.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct ResolutionKey<'a> {
+    pub precedence:  u8,
+    pub cycle:       Cycle,
+    pub temporality: Temporality,
+    pub slug:        &'a str,
+}
 
-**Test :** collision Solennité (Precedence=4) vs Mémoire (Precedence=11) → la Solennité reste en `primary`, la Mémoire en `secondary` si applicable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum Cycle       { Temporal = 0, Sanctoral = 1 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum Temporality { Fixed = 0, Mobile = 1 }
+```
+
+**Pipeline (5 passes — spec §3.3) :**
+
+- **Passe 1** : Placement de toutes les fêtes (fixes et mobiles) dans `BTreeMap<u16 (doy), Vec<PlacedFeast>>`. Aucun conflit résolu.
+- **Passe 2** : Garde V7 + résolution de scope. Pour chaque slot multi-fêtes : appliquer la hiérarchie `diocesan > national > universal` (§3.1) puis détecter `SolemnityCollision` (Precedence ≤ 3 tout scope, Precedence ∈ [4,5] même scope) — fatal avant tout tri.
+- **Passe 3** : Tri Canonique + Élection + Déclassement (§3.4 spec) + Dispatch Transferts. Appliquer `sort_unstable_by_key(|f| f.resolution_key())` sur chaque slot. `slot[0]` = primary. Partition de `slot[1..]` en secondary_feasts, to_transfer, suppressed. Consulter bloc `transfers` pour chaque fête to_transfer.
+- **Passe 4** : `TransferQueue` — BTreeSet déterministe, transferts strictement vers l'avant, profondeur bornée à 7.
+- **Passe 5** : Vérification de clôture — `ResolutionIncomplete` si invariant violé.
+
+Sortie : `ResolvedCalendar` — table indexée `(year, doy) → ResolvedDay { primary, secondaries: Vec<FeastId> }`.
+
+**Tests :**
+
+- `ResolutionKey` : `sort_unstable_by_key` sur un slot de 3 fêtes → vérifier que `slot[0]` est la Solennité (Precedence=1), `slot[1]` la Fête (Precedence=8), `slot[2]` la Mémoire (Precedence=11).
+- Tiebreaker `slug` : deux fêtes de Precedence, Cycle et Temporality identiques → la fête dont le slug est lexicographiquement inférieur devient primary.
+- Passe 2 — V7 : deux Solennités de même scope (Precedence=1) sur le même DOY → `ForgeError::SolemnityCollision` avant tout tri.
+- Passe 3 — `transfers` avec `offset` : fête déplacée atterrit au bon DOY calculé.
+- Passe 3 — `transfers` avec `date` : fête déplacée atterrit à la date fixe.
+- Passe 4 — profondeur : chaîne de 8 jours consécutifs bloquants → `ForgeError::TransferFailed`.
 
 ---
 
-### 2.4 Day Materialization (Étape 4)
+### 2.4 Day Materialization (Étape 5)
 
 **Fichier :** `liturgical-calendar-forge/src/materialization.rs`
 
@@ -326,9 +416,11 @@ Les enums `Nature`, `Color`, `LiturgicalPeriod` dans `registry.rs` (côté Forge
 
 ---
 
-### 2.5 Binary Packing (Étape 5)
+### 2.5 Binary Packing (Étape 6)
 
 **Fichier :** `liturgical-calendar-forge/src/packing.rs`
+
+**Production `.kald` :**
 
 ```rust
 pub fn encode_flags(p: Precedence, c: Color, lp: LiturgicalPeriod, n: Nature) -> u16 {
@@ -342,6 +434,26 @@ pub fn encode_flags(p: Precedence, c: Color, lp: LiturgicalPeriod, n: Nature) ->
 - Écriture séquentielle : Header + Data Body + Secondary Pool
 - Validation post-écriture : relecture du fichier produit via `kal_validate_header`
 
+**Production `.lits` (une par langue compilée) :**
+
+**Fichier :** `liturgical-calendar-forge/src/lits_writer.rs`
+
+```rust
+pub fn write_lits(
+    label_table: &LabelTable,
+    lang: &str,
+    kald_checksum: &[u8; 32],
+    output: &Path,
+) -> Result<(), ForgeError>;
+```
+
+- Trier les entrées par `(feast_id ASC, from ASC)` — ordre déterministe (INV-FORGE-2)
+- Construire le String Pool UTF-8 : chaînes zéro-terminées concaténées
+- Écrire Header 32 octets : magic `b"LITS"`, `version=1`, `lang` (6 octets zéro-padded), `kald_build_id = kald_checksum[..8]`, `entry_count`, `pool_offset`, `pool_size`
+- Écrire Entry Table : `(feast_id u16, from u16, to u16, str_offset u32)` × `entry_count`
+- Écrire String Pool
+- Le `.kald` doit être finalisé **avant** l'appel — `kald_checksum` est son SHA-256 calculé en §2.5 production `.kald`
+
 **Test de conformité Jalon 2 :**
 
 ```rust
@@ -352,9 +464,9 @@ use std::ptr::null_mut;
 
 #[test]
 fn conformity_2025() {
-    let kald = forge_year(2025).expect("forge_year(2025) doit réussir");
+    let (kald, lits_la) = forge_year(2025, &["la"]).expect("forge_year(2025) doit réussir");
 
-    // Validation structurelle header + SHA-256
+    // Validation structurelle .kald : header + SHA-256
     let rc = unsafe { kal_validate_header(kald.as_ptr(), kald.len(), null_mut()) };
     assert_eq!(rc, KAL_ENGINE_OK);
 
@@ -365,20 +477,22 @@ fn conformity_2025() {
     assert_ne!(e.primary_id, 0, "doy=110 doit contenir Pâques");
 
     // Padding Entry : 2025 non-bissextile → doy=59 vide
-    let mut e = CalendarEntry::zeroed();
-    let rc = unsafe { kal_read_entry(kald.as_ptr(), kald.len(), 2025, 59, &mut e) };
+    let mut e2 = CalendarEntry::zeroed();
+    let rc = unsafe { kal_read_entry(kald.as_ptr(), kald.len(), 2025, 59, &mut e2) };
     assert_eq!(rc, KAL_ENGINE_OK);
-    assert_eq!(e.primary_id, 0, "doy=59 doit être Padding Entry pour 2025");
+    assert_eq!(e2.primary_id, 0, "doy=59 doit être Padding Entry pour 2025");
+
+    // Cohérence .lits : kald_build_id = kald_checksum[..8]
+    let kald_checksum = &kald[12..20]; // octets 12–19 du header .kald = SHA-256[..8] (ajustement offset réel)
+    let lits_build_id = &lits_la[12..20]; // octets 12–19 du header .lits
+    assert_eq!(kald_checksum, lits_build_id, "kald_build_id doit correspondre");
+
+    // Label Pâques via LitsProvider
+    let provider = LitsProvider::new(&lits_la).expect("header .lits valide");
+    let label = provider.get(e.primary_id, 2025);
+    assert!(label.is_some(), "Pâques doit avoir un label latin pour 2025");
 }
 ```
-
-Points notables :
-
-- `unsafe` bloc explicite (les fonctions FFI sont `unsafe extern "C"`)
-- `kald.as_ptr()` / `kald.len()` au lieu de `&kald` (signature C-ABI : `*const u8, usize`)
-- Imports complets (le test est dans `liturgical-calendar-forge/tests/` avec dev-dep Core)
-- `null_mut()` typé (pas `null()`)
-- `e` réinitialisé entre les deux lectures (out-param réutilisé)
 
 ---
 
@@ -565,4 +679,4 @@ Serveur HTTP léger wrappant les 4 fonctions FFI de l'Engine. Endpoints : `GET /
 
 **Fin de la Roadmap v2.0 — Ready for Implementation**
 
-_Révisée le 2026-03-08. Trois jalons : Binary Foundation, The Compiler, Sanctification. Engine (`liturgical-calendar-core`) : 4 fonctions FFI, `no_std`/`no_alloc`, projecteur de mémoire O(1). Forge (`liturgical-calendar-forge`) : compilateur AOT, pipeline en 5 étapes, logique liturgique complète. Format binaire `.kald` v2.0 : Header 64 octets, `CalendarEntry` 8 octets, Secondary Pool. Convention DOY 0-based. Plage 1969–2399 (431 ans). Référence : `specification.md` v2.0._
+_Révisée le 2026-04-09 (v2.0.4). Trois jalons : Binary Foundation, The Compiler, Sanctification. Engine (`liturgical-calendar-core`) : 4 fonctions FFI, `no_std`/`no_alloc`, projecteur de mémoire O(1). Forge (`liturgical-calendar-forge`) : compilateur AOT, pipeline en 6 étapes, logique liturgique complète. Format binaire `.kald` v2.0 : Header 64 octets, `CalendarEntry` 8 octets, Secondary Pool. Format `.lits` year-aware : Header 32 octets, Entry Table `(FeastID, from, to, str_offset)`, String Pool UTF-8. Convention DOY 0-based. Plage 1969–2399 (431 ans). Modifications v2.0.2 : slug déduit du stem, `version` remplace `format_version`, bloc `transfers`. Modifications v2.0.3 : `ResolutionKey` tri canonique, `INV-FORGE-SORT`. Modifications v2.0.4 : zéro String YAML, dictionnaires i18n, Étape 1bis (`i18n.rs`), `LitsProvider` year-aware, V-I1–V-I2. Référence : `specification.md` v2.0.4, `liturgical-scheme.md` v1.3._

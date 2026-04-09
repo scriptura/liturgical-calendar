@@ -3,8 +3,8 @@
 **Statut** : Canonique / Source de Vérité YAML  
 **Scope** : `liturgical-calendar-forge` — Étapes 1 (Rule Parsing) et 2 (Canonicalization)  
 **Référence** : `specification.md` v2.0  
-**Date de Révision** : 2026-04-05  
-**Version** : 1.1
+**Date de Révision** : 2026-04-09  
+**Version** : 1.3
 
 ---
 
@@ -15,18 +15,25 @@ Ce document est le **contrat de données amont** de la Forge. Il définit exhaus
 **Flux de transformation :**
 
 ```
-YAML (slug, precedence, from…)
-  → [Étape 1] Rule Parsing + Validation V1–V6
-    → [Étape 2] Canonicalization (DOY, Pâques, dates mobiles)
-      → [Étapes 3–5] Resolution → Materialization → Binary Packing
-        → .kald (CalendarEntry, lecture seule par l'Engine)
+YAML (version, category, date|mobile, transfers, history…)   [pur graphe métier — zéro String]
++ Dictionnaires i18n (la/, fr/, …)                           [source de vérité textuelle externe]
+  → [Étape 1] Rule Parsing + Validation V1–V6, V-T1–V-T3
+    → [Étape 1bis] i18n Resolution — corrélation YAML ↔ dict, fallback latin AOT (V-I1)
+      → [Étape 2] Canonicalization (DOY, Pâques, dates mobiles)
+        → [Étapes 3–5] Resolution (bloc transfers) → Materialization → Binary Packing
+          → .kald  (CalendarEntry 8 bytes/slot — topologie pure, zéro chaîne)
+          → .lits  (Language Index Table — labels indexés par FeastID + plage d'années)
 ```
 
 **Invariants absolus :**
 
 - Toute entrée YAML est **validée à la compilation** (AOT). Aucune erreur de configuration ne peut atteindre le runtime.
-- Le `slug` est la clé de déduplication humaine. La Forge le transforme en `FeastID` (u16) via le `FeastRegistry`. Le slug n'existe pas dans le binaire `.kald`.
-- La Forge rejette tout fichier YAML contenant des slugs en collision, des plages temporelles incompatibles, ou des valeurs hors domaine. Tout échec de validation est fatal — aucune sortie partielle.
+- Le `slug` est la clé de déduplication humaine. Il est **déduit du stem du nom de fichier** (`path.file_stem()`) — il n'est **pas déclaré dans le corps du YAML**. La Forge le transforme en `FeastID` (u16) via le `FeastRegistry`. Le slug n'existe pas dans le binaire `.kald`.
+- **Un rename du fichier est sémantiquement un changement d'identité de la fête**, pas un refactor. Le `feast_registry.lock` (INV-FORGE-3 dans la spec) protège la stabilité des FeastIDs inter-builds à condition d'être versionné avec le corpus YAML.
+- **Zéro String dans le YAML.** Le YAML est un pur graphe de données métier : aucun champ textuel (`title`, `name`, `description`, etc.). Les labels sont externalisés dans des dictionnaires i18n séparés (§4.4).
+- **Identité i18n dérivée.** La clé composite `{slug}.{from}.{field}` identifie un label de manière unique. Elle est implicite — jamais déclarée dans le YAML — et résolue par la Forge à la compilation.
+- **Latin comme langue source obligatoire.** Pour chaque clé `{slug}.{from}.{field}` présente dans le corpus YAML, une entrée doit exister dans le dictionnaire `i18n/la/`. Son absence est une erreur fatale (V-I1). Le fallback vers le latin est réalisé par la Forge (fusion AOT) — jamais au runtime.
+- La Forge rejette tout fichier YAML contenant des plages temporelles incompatibles, des valeurs hors domaine, ou un stem de fichier ne respectant pas la syntaxe `[a-z][a-z0-9_]*`. Tout échec de validation est fatal — aucune sortie partielle.
 - Les champs `from` / `to` expriment des années grégoriennes entières. Bornes inclusives. Plage admise : **[1969, 2399]**.
 
 ---
@@ -35,11 +42,12 @@ YAML (slug, precedence, from…)
 
 ### 1.1 Principe : 1 Slug = 1 Fichier
 
-Chaque fête liturgique est décrite dans un **fichier YAML indépendant**, nommé d'après son slug. Cette atomicité garantit :
+Chaque fête liturgique est décrite dans un **fichier YAML indépendant**, nommé d'après son slug. **Le stem du nom de fichier (sans extension) constitue la définition du slug** — il n'est pas redéclaré dans le corps YAML. Cette atomicité garantit :
 
 - Des diffs Git par fête (lisibilité, code review)
 - Un corpus partiel valide (un diocèse peut ne livrer que ses propres fichiers)
 - L'absence de collision de slugs au niveau du système de fichiers (deux fichiers de même nom dans le même répertoire est une impossibilité FS)
+- La suppression de toute redondance slug YAML ↔ nom de fichier (principe DRY)
 
 ### 1.2 Hiérarchie des Répertoires
 
@@ -106,11 +114,10 @@ Le nommage slug (latin snake_case) garantit que l'ordre lexicographique des noms
 
 ### 1.5 Format d'un Fichier Atomique
 
-L'en-tête de fichier est allégé : `scope` et `region` sont déduits du chemin (§1.3). `format_version` reste obligatoire pour la détection de schéma incompatible.
+L'en-tête de fichier est allégé : `scope`, `region` et `slug` sont déduits du chemin du fichier (§1.3 et §1.1). `version` est obligatoire pour la détection de schéma incompatible.
 
 ```yaml
-format_version: 1 # Obligatoire — détection UnsupportedSchemaVersion
-slug: nativitas_domini
+version: 1 # Obligatoire — détection UnsupportedSchemaVersion
 category: 0 # Sous-espace FeastID — bits [13:12] — voir §2.2
 date: # OU mobile: — exactement l'un des deux
   month: 12
@@ -119,11 +126,11 @@ date: # OU mobile: — exactement l'un des deux
 history:
   - from: 1969
     to: ~
-    title: "In Nativitate Domini"
     precedence: 1
     nature: sollemnitas
     color: albus
     season: tempus_nativitatis # Optionnel — voir §2.3
+    # title : absent du YAML — défini dans i18n/la/nativitas_domini.yaml (§4.4)
 ```
 
 > **Surcharge partielle (scope national/diocésain) :** un fichier de surcharge peut omettre le bloc `date`/`mobile` si la temporalité est héritée du scope universel. Il ne déclare que les champs `history` qui diffèrent. La Forge fusionne les blocs `history` selon les règles de §5.2.
@@ -139,8 +146,8 @@ Chaque entrée dans la liste `feasts` définit une fête liturgique. Elle compor
 
 ```yaml
 feasts:
-  - slug: <string> # Identifiant stable — voir §2.1
-    id: <u16> # Optionnel — voir §2.2
+  - id: <u16> # Optionnel — voir §2.2
+    # slug : déduit du stem du nom de fichier — non déclaré ici (§2.1)
     # scope et region : déduits du chemin du fichier (§1.3) — non répétés ici
     category: <0–3> # Sous-espace FeastID — bits [13:12], 4 valeurs — voir §2.2
 
@@ -152,21 +159,38 @@ feasts:
       anchor: <anchor_id>
       offset: <integer> # Peut être négatif (ex: -7 pour le dimanche avant Pâques)
 
+    # Transferts déclaratifs — optionnel — voir §2.4
+    transfers:
+      - collides: <slug_concurrent>  # Slug (= stem du fichier) de la fête en collision
+        offset: <integer>            # OU date: — exclusifs — voir §2.4
+      - collides: <slug_concurrent>
+        date:
+          month: <1–12>
+          day: <1–31>
+
     history: # Tableau ordonné des versions — voir §4
       - from: <year>
         to: <year|~>
-        title: <string>
         precedence: <0–12>
         nature: <string>
         color: <string>
         season: <string> # Optionnel — voir §2.3
+        # Labels textuels (title, etc.) : externalisés dans i18n/{lang}/{slug}.yaml (§4.4)
 ```
 
 ---
 
 ## 2.1 Identité : `slug`
 
-Le `slug` est la **clé primaire immuable** d'une fête dans le `FeastRegistry`. Il est choisi une fois, lors de la première déclaration, et ne change plus.
+Le `slug` est la **clé primaire immuable** d'une fête dans le `FeastRegistry`. Il est **déduit du stem du nom de fichier** lors de l'ingestion par la Forge (`path.file_stem()` — le nom sans l'extension `.yaml`). Il n'est pas déclaré dans le corps du YAML.
+
+```
+nativitas_domini.yaml  →  slug = "nativitas_domini"
+ascensio_domini.yaml   →  slug = "ascensio_domini"
+ioannis_pauli_ii.yaml  →  slug = "ioannis_pauli_ii"
+```
+
+**Validation préalable à la désérialisation :** la Forge valide la syntaxe du stem **avant** de tenter la lecture YAML. Tout stem ne satisfaisant pas `[a-z][a-z0-9_]*` est rejeté avec `ParseError::InvalidSlugSyntax(stem)`. Le fichier n'est pas parsé.
 
 **Règle de neutralité obligatoire :** le slug identifie la **personne ou l'événement**, pas son statut liturgique courant.
 
@@ -176,9 +200,11 @@ Le `slug` est la **clé primaire immuable** d'une fête dans le `FeastRegistry`.
 ❌  b_caroli_de_foucauld    ← encode "Beatus" — cassé si canonisé ultérieurement
 ```
 
-**Justification structurelle :** si le statut est encodé dans le slug, une canonisation force un changement de clé → un nouveau `FeastID` → une rupture de continuité historique. Le `FeastID` alloué par la Forge doit être **stable** sur toute la plage 1969–2399 pour un slug donné.
+**Justification structurelle :** si le statut est encodé dans le slug, une canonisation force un rename de fichier → un nouveau `FeastID` → une rupture de continuité historique. Le `FeastID` alloué par la Forge doit être **stable** sur toute la plage 1969–2399 pour un slug donné.
 
-**Syntaxe** : `[a-z][a-z0-9_]*` — Latin snake_case, sans accent, sans tiret, sans espace. Le premier caractère doit être une lettre (pas un chiffre). Validation V6.
+**Invariant opérationnel :** un rename de fichier est sémantiquement un changement d'identité de la fête. Il entraîne l'allocation d'un nouveau FeastID et la tombstonisation de l'ancien dans `feast_registry.lock`. Cette opération est irréversible — le lock garantit qu'un FeastID tombstoné n'est jamais réalloué.
+
+**Syntaxe** : `[a-z][a-z0-9_]*` — Latin snake_case, sans accent, sans tiret, sans espace. Le premier caractère doit être une lettre (pas un chiffre). Validation V6 (appliquée au stem du nom de fichier).
 
 **Exemples valides :** `nativitas_domini`, `ioannis_pauli_ii`, `ascensio_domini`, `dominica_in_palmis`
 
@@ -232,6 +258,75 @@ Il peut être fourni explicitement pour les fêtes dont la saison est fixe indé
 
 ---
 
+## 2.4 Bloc `transfers` — Résolution Déclarative des Collisions
+
+Le bloc `transfers` est **optionnel**. Il déclare les règles de repli d'une fête lorsqu'elle entre en collision sur le même DOY avec une fête identifiée par son slug. Il est consommé **exclusivement par la Passe 3 de l'Étape 3 (Conflict Resolution)**.
+
+En l'absence de ce bloc, la Forge applique les règles générales de §3.2–§3.3 (Precedence, tiebreakers). En présence de ce bloc, les entrées `transfers` constituent une table de dispatch déclarative — aucun code impératif conditionnel dans la Forge pour les exceptions liturgiques.
+
+### Structure
+
+```yaml
+transfers:
+  - collides: <slug_concurrent>  # Slug (stem du fichier) de la fête déclenchante
+    offset: <integer>            # Décalage relatif en jours (signé) si collision
+  - collides: <slug_concurrent>
+    date:                        # Date fixe de repli si collision
+      month: <1–12>
+      day: <1–31>
+```
+
+### Sémantique
+
+| Clé       | Type              | Signification                                                                        |
+| --------- | ----------------- | ------------------------------------------------------------------------------------ |
+| `collides`| String (slug)     | La fête dont la présence sur le même DOY déclenche la règle de transfert             |
+| `offset`  | Integer signé     | Décalage relatif en jours depuis le DOY de collision (positif = vers l'avant)       |
+| `date`    | `{month, day}`    | Date fixe de repli, indépendante du DOY de collision                                 |
+
+**`offset` et `date` sont mutuellement exclusifs.** Une entrée qui déclare les deux est rejetée avec `ParseError::TransferAmbiguous { slug, collides }`. Une entrée qui ne déclare ni l'un ni l'autre est également invalide — la règle serait sans effet.
+
+### Invariants
+
+**Résolution au premier build :** le slug déclaré dans `collides` doit être résolvable dans le `FeastRegistry` au moment de la Passe 3. Un slug inconnu (absent du corpus compilé, faute de frappe) est rejeté avec `ParseError::UnknownCollidesTarget { slug, collides }`. Ce n'est pas un avertissement — une règle de transfert non résolvable est une règle silencieusement morte.
+
+**Résolution à un seul niveau :** si la date de repli (via `offset` ou `date`) atterrit elle-même sur un slot occupé, la Forge applique les règles générales de Precedence (§3.2). Elle **ne réapplique pas** le bloc `transfers` de la fête déplacée sur sa nouvelle date. Tout atterrissage sur un slot occupé après déplacement produit un `ConflictWarning`, pas une erreur fatale.
+
+**Unicité de la clé `collides` :** deux entrées `transfers` ne peuvent référencer le même slug concurrent. Violation → `ParseError::TransferDuplicateCollides { slug, collides }`.
+
+### Exemple — Sainte Famille
+
+La Sainte Famille est normalement le dimanche dans l'Octave de Noël. Si Noël tombe un dimanche (et qu'il n'y a pas d'octave), la Sainte Famille est transférée au 30 décembre.
+
+```yaml
+# data/universale/temporale/sanctae_familiae.yaml
+version: 1
+category: 0
+mobile:
+  anchor: pascha
+  offset: -7 # exemple fictif — la vraie règle est relative à Noël
+
+transfers:
+  - collides: nativitas_domini
+    date:
+      month: 12
+      day: 30
+```
+
+### Exemple — Sacré-Cœur et Corpus Christi
+
+```yaml
+transfers:
+  - collides: sacratissimi_cordis_iesu
+    offset: -1
+  - collides: corpus_christi
+    date:
+      month: 6
+      day: 25
+```
+
+---
+
 ## 3. Temporalité
 
 ### 3.1 Dates Fixes
@@ -261,19 +356,17 @@ fn doy_from_date(month: u8, day: u8) -> u16 {
 Le 29 février est déclarable en YAML et produit toujours `doy = 59`. Pour les années non-bissextiles, la Forge écrit une **Padding Entry** à `doy = 59` (`primary_id = 0`, `secondary_count = 0`, `flags = 0`). La fête n'est pas transférée — elle est simplement absente pour cette année. L'Engine reçoit la Padding Entry et retourne `KAL_ENGINE_OK` avec `primary_id = 0` ; l'interprétation est laissée à l'appelant.
 
 ```yaml
-# Exemple : Fête fixée au 29 février
-- slug: sancti_cassiani
-  date:
-    month: 2
-    day: 29 # doy = 59 ; Padding Entry les années non-bissextiles
-  scope: universal
-  category: 1
-  history:
-    - from: 1969
-      title: "S. Cassianus"
-      precedence: 12
-      nature: memoria
-      color: rubeus
+# Exemple : Fête fixée au 29 février — fichier : sancti_cassiani.yaml
+date:
+  month: 2
+  day: 29 # doy = 59 ; Padding Entry les années non-bissextiles
+category: 1
+history:
+  - from: 1969
+    precedence: 12
+    nature: memoria
+    color: rubeus
+    # title → i18n/la/sancti_cassiani.yaml : { 1969: { title: "S. Cassianus" } }
 ```
 
 **Validation V3 :** la Forge vérifie que `day` est cohérent avec `month` (ex: `month: 2, day: 30` → `ParseError::InvalidDate`). Le 29 février est la seule date admise en dehors des limites standard du mois ; toutes les autres dates invalides sont rejetées.
@@ -319,19 +412,19 @@ mobile:
 **Exemple complet — Ascension :**
 
 ```yaml
-- slug: ascensio_domini
-  mobile:
-    anchor: pascha
-    offset: +39
-  scope: universal
-  category: 0
-  history:
-    - from: 1969
-      title: "Ascensio Domini"
-      precedence: 1
-      nature: sollemnitas
-      color: albus
-      season: tempus_paschale
+# data/universale/temporale/ascensio_domini.yaml
+version: 1
+category: 0
+mobile:
+  anchor: pascha
+  offset: +39
+history:
+  - from: 1969
+    precedence: 1
+    nature: sollemnitas
+    color: albus
+    season: tempus_paschale
+    # title → i18n/la/ascensio_domini.yaml : { 1969: { title: "Ascensio Domini" } }
 ```
 
 **Validation V4 — Cycles et dépendances :**
@@ -352,11 +445,11 @@ Le bloc `history` est un tableau ordonné. Chaque entrée couvre une plage d'ann
 history:
   - from: <year> # Borne inférieure inclusive. Défaut : 1969 si omis.
     to: <year|~> # Borne supérieure inclusive. null (ou omis) = indéfini.
-    title: <string> # Nom canonique pour cette période. Stocké dans le .lits.
     precedence: <0–12> # Rang liturgique effectif.
-    nature: <string> # Voir §6.2.
-    color: <string> # Voir §6.3.
-    season: <string> # Optionnel — voir §2.3 et §6.4.
+    nature: <string>   # Voir §6.2.
+    color: <string>    # Voir §6.3.
+    season: <string>   # Optionnel — voir §2.3 et §6.4.
+    # Aucun champ textuel (title, name…) : labels externalisés dans i18n/{lang}/{slug}.yaml (§4.4)
 ```
 
 **Sémantique de `to: ~` (null) :**
@@ -398,41 +491,103 @@ Si `resolve_feast_for_year` retourne `Ok(None)`, la fête est **absente** du dat
 ### 4.3 Exemple Complet — Jean-Paul II (Béatification → Canonisation)
 
 ```yaml
-- slug: ioannis_pauli_ii # ← neutre, stable, immuable après première allocation
-  date:
-    month: 10
-    day: 22
-  scope: national
-  region: PL
-  category: 1
+# data/nationalia/PL/sanctorale/ioannis_pauli_ii.yaml
+# slug = "ioannis_pauli_ii", scope = national, region = PL — déduits du chemin
+version: 1
+category: 1
+date:
+  month: 10
+  day: 22
 
-  history:
-    # Version 1 : Béatification (2011)
-    # "Beatus" est un statut canonique, pas une Nature → Nature::Memoria
-    # precedence: 11 = MemoriaeObligatoriae dans le calendrier polonais
-    - from: 2011
-      to: 2013
-      title: "B. Ioannes Paulus II"
-      precedence: 11
-      nature: memoria
-      color: albus
+history:
+  # Période 1 : Béatification (2011–2013)
+  # title → i18n/la/ioannis_pauli_ii.yaml : { 2011: { title: "B. Ioannes Paulus II" } }
+  - from: 2011
+    to: 2013
+    precedence: 11
+    nature: memoria
+    color: albus
 
-    # Version 2 : Canonisation (2014 → indéfini)
-    # Le slug ne change pas — seul title et precedence évoluent.
-    # precedence: 12 = FeriaePerAnnumEtMemoriaeAdLibitum (Memoria facultative)
-    # La canonisation inscrit la fête au calendarium generale (scope: universal),
-    # mais l'entrée nationale PL reste distincte et peut coexister.
-    - from: 2014
-      to: ~
-      title: "S. Ioannes Paulus II"
-      precedence: 12
-      nature: memoria
-      color: albus
+  # Période 2 : Canonisation (2014 → indéfini)
+  # title → i18n/la/ioannis_pauli_ii.yaml : { 2014: { title: "S. Ioannes Paulus II" } }
+  - from: 2014
+    to: ~
+    precedence: 12
+    nature: memoria
+    color: albus
 ```
 
 **Lecture de la hiérarchie :**
 
 La `Precedence` est numérique inverse : valeur plus faible = priorité plus haute. La béatification (valeur 11, Memoria obligatoria nationale) avait une priorité **plus haute** que la version canonisée (valeur 12, Memoria ad libitum universelle). Les deux peuvent coexister dans le registre car leurs scopes et leurs plages temporelles sont disjoints.
+
+---
+
+## 4.4 Dictionnaires i18n — Séparation Canon / Labels
+
+### Structure sur disque
+
+Les labels textuels sont stockés dans une arborescence `i18n/` parallèle au corpus YAML. Le latin (`la`) est la **langue source obligatoire** — référence de la Forge.
+
+```
+corpus/
+├── universale/
+│   ├── temporale/
+│   │   └── ascensio_domini.yaml       ← graphe métier pur
+│   └── sanctorale/
+│       └── nativitas_domini.yaml
+└── i18n/
+    ├── la/                             ← source obligatoire
+    │   ├── ascensio_domini.yaml
+    │   └── nativitas_domini.yaml
+    ├── fr/
+    │   └── nativitas_domini.yaml
+    └── de/
+        └── nativitas_domini.yaml
+```
+
+### Format d'un fichier dictionnaire
+
+La clé de premier niveau est l'année `from` du bloc `history` concerné. Les sous-clés sont les champs textuels (`title`, `subtitle`, …).
+
+```yaml
+# i18n/la/nativitas_domini.yaml
+1969:
+  title: "In Nativitate Domini"
+
+# i18n/fr/nativitas_domini.yaml
+1969:
+  title: "Nativité du Seigneur"
+```
+
+```yaml
+# i18n/la/ioannis_pauli_ii.yaml
+2011:
+  title: "B. Ioannes Paulus II"
+2014:
+  title: "S. Ioannes Paulus II"
+```
+
+### Clé composite implicite
+
+L'identité d'un label est la clé composite `{slug}.{from}.{field}` :
+
+| Composant | Source | Exemple |
+|-----------|--------|---------|
+| `slug` | stem du fichier dictionnaire | `nativitas_domini` |
+| `from` | clé de premier niveau YAML | `1969` |
+| `field` | sous-clé | `title` |
+
+→ Clé : `nativitas_domini.1969.title`
+
+Cette clé est **implicite** — jamais déclarée explicitement. Elle est reconstruite par la Forge lors de la corrélation YAML ↔ dictionnaires (Étape 1bis).
+
+### Invariants
+
+- Pour chaque entrée `history[]` du corpus YAML dont `from = Y`, une clé `{slug}.Y.title` **doit** exister dans `i18n/la/`. Son absence est une erreur fatale V-I1.
+- Un dictionnaire peut déclarer un `from` non présent dans le YAML correspondant → `ParseError::I18nOrphanKey { slug, lang, from }` (erreur fatale — indique une désynchronisation du corpus).
+- Une langue autre que le latin peut omettre certaines clés : la Forge fusionne le latin en fallback AOT. La traduction partielle est admise, l'absence totale du latin ne l'est pas.
+- Les fichiers dictionnaires utilisent le même stem que les fichiers YAML — la résolution est par correspondance de nom, pas par déclaration interne.
 
 ---
 
@@ -466,23 +621,23 @@ Deux fêtes de scopes différents peuvent tomber le même jour. La Forge appliqu
 
 **Surcharge partielle :**
 
-Un fichier national ou diocésain peut ne redéfinir que certains champs d'une fête universelle (ex: un titre localisé, une `precedence` relevée). La Forge fusionne les blocs `history` — les entrées du scope local écrasent, pour les années couvertes, les entrées du scope universel.
+Un fichier national ou diocésain peut ne redéfinir que certains champs d'une fête universelle (ex: une `precedence` relevée). La Forge fusionne les blocs `history` — les entrées du scope local écrasent, pour les années couvertes, les entrées du scope universel. Les labels sont surchargés via le dictionnaire i18n du scope local (`i18n/la/` dans `nationalia/{ISO}/` ou `dioecesana/{ID}/`).
 
 ```yaml
 # data/nationalia/FR/sanctorale/nativitas_domini.yaml
-# scope=national, region=FR déduits du chemin
+# slug = "nativitas_domini", scope = national, region = FR — tous déduits du chemin
 
-format_version: 1
-slug: nativitas_domini
+version: 1
 # Pas de date/mobile : héritée du fichier universale/sanctorale/nativitas_domini.yaml
 category: 0
 history:
   - from: 1969
     to: ~
-    title: "Nativité du Seigneur" # Titre localisé en français
-    precedence: 1 # Inchangé
-    nature: sollemnitas # Inchangé
-    color: albus # Inchangé
+    precedence: 1
+    nature: sollemnitas
+    color: albus
+    # Surcharge du titre → i18n/fr/ dans nationalia/FR/ si elle existe,
+    # sinon fallback i18n/la/ universel (fusion AOT)
 ```
 
 ### 5.3 Interface de Configuration de la Forge
@@ -626,21 +781,22 @@ Si omis dans le YAML, la Forge calcule la saison depuis les `SeasonBoundaries` d
 
 Tableau de correspondance complet entre les champs YAML et les champs binaires de `CalendarEntry` (spec §3.3–3.4) :
 
-| Champ YAML                        | Type YAML           | Destination binaire                | Offset | Note                                             |
-| --------------------------------- | ------------------- | ---------------------------------- | ------ | ------------------------------------------------ |
-| `slug`                            | String              | —                                  | —      | Clé FeastRegistry uniquement. Absent du `.kald`. |
-| `id`                              | u16 \| null         | `CalendarEntry.primary_id`         | 0      | Alloué par la Forge si absent.                   |
-| `date.month` + `date.day`         | Integer             | DOY 0-based (formule §3.1)         | —      | Formule : `MONTH_STARTS[month-1] + day - 1`      |
-| `mobile.anchor` + `mobile.offset` | String + Integer    | DOY 0-based (Étape 2)              | —      | Résolution Pâques + offset                       |
-| —                                 | —                   | `CalendarEntry.secondary_index`    | 2      | Alimenté par Étape 4 (Materialization)           |
-| `history[].precedence`            | Integer [0–12]      | `CalendarEntry.flags` bits [3:0]   | 4      |                                                  |
-| `history[].color`                 | String enum         | `CalendarEntry.flags` bits [7:4]   | 4      |                                                  |
-| `history[].season`                | String enum \| null | `CalendarEntry.flags` bits [10:8]  | 4      | Calculé si absent                                |
-| `history[].nature`                | String enum         | `CalendarEntry.flags` bits [13:11] | 4      |                                                  |
-| —                                 | —                   | `CalendarEntry.secondary_count`    | 6      | Alimenté par Étape 3 (Conflict Resolution)       |
-| `history[].title`                 | String              | Fichier `.lits`                    | —      | Absent du `.kald`.                               |
-| `scope`                           | String enum         | FeastID bits [15:14]               | —      | `universal=00`, `national=01`, `diocesan=10`     |
-| `category`                        | Integer [0–3]       | FeastID bits [13:12]               | —      |                                                  |
+| Champ YAML                        | Type YAML           | Destination binaire                | Offset | Note                                                             |
+| --------------------------------- | ------------------- | ---------------------------------- | ------ | ---------------------------------------------------------------- |
+| *(stem du nom de fichier)*        | —                   | —                                  | —      | Slug : clé FeastRegistry. Déduit du chemin. Absent du `.kald`.  |
+| `id`                              | u16 \| null         | `CalendarEntry.primary_id`         | 0      | Alloué par la Forge si absent.                                   |
+| `date.month` + `date.day`         | Integer             | DOY 0-based (formule §3.1)         | —      | Formule : `MONTH_STARTS[month-1] + day - 1`                      |
+| `mobile.anchor` + `mobile.offset` | String + Integer    | DOY 0-based (Étape 2)              | —      | Résolution Pâques + offset                                       |
+| `transfers[]`                     | Tableau             | —                                  | —      | Consommé exclusivement par la Passe 3 de l'Étape 3. Absent du `.kald`. |
+| —                                 | —                   | `CalendarEntry.secondary_index`    | 2      | Alimenté par Étape 4 (Materialization)                           |
+| `history[].precedence`            | Integer [0–12]      | `CalendarEntry.flags` bits [3:0]   | 4      |                                                                  |
+| `history[].color`                 | String enum         | `CalendarEntry.flags` bits [7:4]   | 4      |                                                                  |
+| `history[].season`                | String enum \| null | `CalendarEntry.flags` bits [10:8]  | 4      | Calculé si absent                                                |
+| `history[].nature`                | String enum         | `CalendarEntry.flags` bits [13:11] | 4      |                                                                  |
+| —                                 | —                   | `CalendarEntry.secondary_count`    | 6      | Alimenté par Étape 3 (Conflict Resolution)                       |
+| *(clé `{slug}.{from}.{field}`)*   | —                   | Fichier `.lits`                    | —      | Clé implicite. Résolue via dictionnaires i18n (Étape 1bis). Absent du `.kald`. |
+| `scope`                           | String enum         | FeastID bits [15:14]               | —      | `universal=00`, `national=01`, `diocesan=10`                     |
+| `category`                        | Integer [0–3]       | FeastID bits [13:12]               | —      |                                                                  |
 
 > **Rappel layout `CalendarEntry` (spec §3.3) :** `primary_id (u16, off 0)` | `secondary_index (u16, off 2)` | `flags (u16, off 4)` | `secondary_count (u8, off 6)` | `_reserved (u8, off 7)`. Les trois `u16` sont aux offsets pairs — alignement naturel garanti.
 
@@ -669,10 +825,7 @@ Ces validations sont appliquées durant l'**Étape 1 (Rule Parsing)**. Tout éch
 ```
 ∀ fichier f :
   f est syntaxiquement valide YAML
-  ∧ f.format_version == 1
-  ∧ f.scope ∈ { "universal", "national", "diocesan" }
-  ∧ si f.scope != "universal" alors f.region != null
-  ∧ chaque feast ∈ f.feasts est conforme au schéma §2
+  ∧ f.version == 1
   ∧ exactement un de {date, mobile} est présent par feast
 ```
 
@@ -759,13 +912,15 @@ Violation → `ParseError::UnknownAnchor { slug, anchor }`, `ParseError::Circula
 
 Violation → `RegistryError::UnknownNatureString(String)` avec hint si valeur canonique informelle détectée.
 
-**V6 — Slug syntaxiquement valide (ex-V6 spec §10)**
+**V6 — Stem du nom de fichier syntaxiquement valide**
 
 ```
 slug ∈ [a-z][a-z0-9_]*   (latin snake_case, premier char alphabétique)
 ```
 
-Violation → `RegistryError::InvalidSlugSyntax(String)`
+La validation s'applique au **stem du nom de fichier** (`path.file_stem()`), avant toute désérialisation YAML. Tout fichier dont le stem ne satisfait pas ce pattern est rejeté immédiatement.
+
+Violation → `ParseError::InvalidSlugSyntax(String)` — la `String` contient le stem fautif.
 
 **V2-Bis — Domaine de Precedence (ex-V2 spec §10)**
 
@@ -775,9 +930,73 @@ Violation → `RegistryError::InvalidSlugSyntax(String)`
 
 Violation → `RegistryError::InvalidPrecedenceValue(u8)` (valeurs 13–15 réservées système)
 
+### Groupe E — Validité du Bloc `transfers` (V-T1, V-T2, V-T3)
+
+Ces validations sont appliquées durant l'**Étape 1 (Rule Parsing)**, lors de la désérialisation du bloc `transfers`. Tout échec est fatal.
+
+**V-T1 — Exclusivité `offset` / `date` dans chaque entrée**
+
+```
+∀ entrée t ∈ transfers :
+  (t.offset présent) XOR (t.date présent)
+```
+
+Une entrée qui déclare les deux clés (`offset` et `date`) est ambiguë. Une entrée qui n'en déclare aucune est sans effet et donc invalide.
+
+Violations → `ParseError::TransferAmbiguous { slug, collides }` (les deux présents) · `ParseError::TransferEmpty { slug, collides }` (aucun)
+
+**V-T2 — Résolvabilité de `collides` dans le `FeastRegistry`**
+
+```
+∀ entrée t ∈ transfers :
+  t.collides ∈ slugs_connus_du_FeastRegistry
+```
+
+Le slug déclaré dans `collides` doit être présent dans le `FeastRegistry` au terme de l'Étape 1. Un slug inconnu (absent du corpus compilé, faute de frappe) constitue une règle morte — la Forge la traite comme une erreur fatale, pas un avertissement.
+
+Violation → `ParseError::UnknownCollidesTarget { slug, collides }`
+
+**V-T3 — Unicité de `collides` au sein du bloc**
+
+```
+∀ (t1, t2) ∈ transfers² : t1 ≠ t2 ⟹ t1.collides ≠ t2.collides
+```
+
+Deux entrées référençant le même slug concurrent produiraient un comportement non déterministe (laquelle appliquer ?). La première en position YAML n'a pas de sémantique canonique.
+
+Violation → `ParseError::TransferDuplicateCollides { slug, collides }`
+
+### Groupe F — Corrélation YAML ↔ Dictionnaires i18n (V-I1, V-I2)
+
+Ces validations sont appliquées durant l'**Étape 1bis (i18n Resolution)**. Elles opèrent après la construction complète du `FeastRegistry` — tous les slugs et toutes les plages `[from, to]` sont connus. Tout échec est fatal.
+
+La nature de la validation change radicalement par rapport aux groupes A–E : on ne valide plus "la présence d'un champ texte dans le YAML" mais "la présence d'une clé d'indexation dans le dictionnaire externe". Le YAML est purement structurel — la Forge corrèle le graphe métier avec les dictionnaires.
+
+**V-I1 — Présence obligatoire de la clé latine**
+
+```
+∀ (slug s, entrée e ∈ history(s)) :
+  ∃ clé "{s}.{e.from}.title" ∈ i18n/la/{s}.yaml
+```
+
+Pour chaque entrée `history[]` du corpus YAML, la clé composite `{slug}.{from}.title` doit exister dans le dictionnaire latin correspondant. L'absence est une erreur fatale — le latin est la langue source, pas un optionnel.
+
+Violation → `ParseError::I18nMissingLatinKey { slug, from, field }`
+
+**V-I2 — Absence de clés orphelines dans les dictionnaires**
+
+```
+∀ clé "{s}.{y}.{field}" ∈ i18n/{lang}/{s}.yaml :
+  ∃ entrée e ∈ history(s) avec e.from == y
+```
+
+Un dictionnaire ne peut contenir de clés dont l'année `from` est absente du bloc `history[]` correspondant. Une telle clé indique une désynchronisation entre le corpus YAML et les dictionnaires.
+
+Violation → `ParseError::I18nOrphanKey { slug, lang, from, field }`
+
 ### Tableau de Correspondance Spec §10 ↔ Ce Document
 
-Ce tableau est la clé de lecture bidirectionnelle entre les codes d'erreur Rust (spec §10) et les groupes de validation de ce document. Les codes V1–V6 sont les seuls identifiants à utiliser dans le code et les messages d'erreur produits par la Forge.
+Ce tableau est la clé de lecture bidirectionnelle entre les codes d'erreur Rust (spec §10) et les groupes de validation de ce document. Les codes V1–V6 et V-T1–V-T3 sont les seuls identifiants à utiliser dans le code et les messages d'erreur produits par la Forge.
 
 | Code spec §10 | Variant Rust (`RegistryError` / `ParseError`)         | Groupe §8      | Libellé                                                         |
 | ------------- | ----------------------------------------------------- | -------------- | --------------------------------------------------------------- |
@@ -786,17 +1005,23 @@ Ce tableau est la clé de lecture bidirectionnelle entre les codes d'erreur Rust
 | **V3**        | `FeastIDExhausted { scope, category }`                | **B — V2c**    | Capacité FeastID ≤ 4095 par (scope, category)                   |
 | **V4**        | `InvalidTemporalRange { from, to }`                   | **C — V3b**    | Cohérence et bornes des plages `[from, to]` dans `[1969, 2399]` |
 | **V5**        | `UnknownNatureString(String)`                         | **D — V5**     | Nature conforme aux 5 enums admis                               |
-| **V6**        | `InvalidSlugSyntax(String)`                           | **D — V6**     | Slug : `[a-z][a-z0-9_]*` obligatoire                            |
+| **V6**        | `InvalidSlugSyntax(String)`                           | **D — V6**     | Stem fichier : `[a-z][a-z0-9_]*` — validé avant parsing YAML   |
 
-**Validations §8 sans code V-numéroté dans la spec** (erreurs structurelles de parsing, pas d'erreurs de domaine) :
+**Validations §8 sans code V-numéroté dans la spec** (erreurs structurelles de parsing) :
 
-| Variant Rust                                             | Groupe §8   | Libellé                                        |
-| -------------------------------------------------------- | ----------- | ---------------------------------------------- |
-| `ParseError::MalformedYaml` / `UnsupportedSchemaVersion` | **A — V1**  | Syntaxe YAML invalide ou `format_version != 1` |
-| `RegistryError::DuplicateSlug { slug, scope }`           | **B — V2a** | Slug déclaré deux fois dans le même scope      |
-| `RegistryError::FeastIDConflict { id, slug_a, slug_b }`  | **B — V2b** | Collision sur `id` explicite                   |
-| `ParseError::InvalidDate { slug, month, day }`           | **C — V3a** | Date fixe impossible (ex: 30 février)          |
-| `ParseError::CircularDependency { slug, anchor }`        | **D — V4**  | Cycle dans le graphe des ancres mobiles        |
+| Variant Rust                                              | Groupe §8    | Libellé                                                         |
+| --------------------------------------------------------- | ------------ | --------------------------------------------------------------- |
+| `ParseError::MalformedYaml` / `UnsupportedSchemaVersion`  | **A — V1**   | Syntaxe YAML invalide ou `version != 1`                         |
+| `RegistryError::DuplicateSlug { slug, scope }`            | **B — V2a**  | Collision de slug dans le même scope (même stem, même répertoire scope) |
+| `RegistryError::FeastIDConflict { id, slug_a, slug_b }`   | **B — V2b**  | Collision sur `id` explicite                                    |
+| `ParseError::InvalidDate { slug, month, day }`            | **C — V3a**  | Date fixe impossible (ex: 30 février)                           |
+| `ParseError::CircularDependency { slug, anchor }`         | **D — V4**   | Cycle dans le graphe des ancres mobiles                         |
+| `ParseError::TransferAmbiguous { slug, collides }`        | **E — V-T1** | Entrée `transfers` avec `offset` et `date` simultanément        |
+| `ParseError::TransferEmpty { slug, collides }`            | **E — V-T1** | Entrée `transfers` sans `offset` ni `date`                      |
+| `ParseError::UnknownCollidesTarget { slug, collides }`    | **E — V-T2** | Slug `collides` absent du `FeastRegistry`                       |
+| `ParseError::TransferDuplicateCollides { slug, collides }` | **E — V-T3** | Deux entrées `transfers` référencent le même concurrent         |
+| `ParseError::I18nMissingLatinKey { slug, from, field }`   | **F — V-I1** | Clé `{slug}.{from}.{field}` absente du dictionnaire `i18n/la/` |
+| `ParseError::I18nOrphanKey { slug, lang, from, field }`   | **F — V-I2** | Clé dictionnaire référençant un `from` absent du `history[]`    |
 
 ---
 
@@ -806,22 +1031,22 @@ Ce tableau est la clé de lecture bidirectionnelle entre les codes d'erreur Rust
 
 ```yaml
 # data/universale/sanctorale/nativitas_domini.yaml
+# slug = "nativitas_domini" déduit du stem du nom de fichier
 
-format_version: 1
-slug: nativitas_domini
+version: 1
+category: 0
 date:
   month: 12
   day: 25 # doy = 335 + 24 = 359 (toujours — DOY 0-based)
-category: 0
 
 history:
   - from: 1969
     to: ~
-    title: "In Nativitate Domini"
-    precedence: 1 # Rang le plus élevé après le Triduum — éviction maximale
+    precedence: 1
     nature: sollemnitas
     color: albus
     season: tempus_nativitatis
+    # title → i18n/la/nativitas_domini.yaml : { 1969: { title: "In Nativitate Domini" } }
 ```
 
 **Résultat dans `CalendarEntry` pour le 25 décembre de n'importe quelle année :**
@@ -846,22 +1071,22 @@ Valeur `flags` numérique : `encode_flags(1, 0, 2, 0)` = `1 | (0 << 4) | (2 << 8
 
 ```yaml
 # data/universale/temporale/ascensio_domini.yaml
+# slug = "ascensio_domini" déduit du stem du nom de fichier
 
-format_version: 1
-slug: ascensio_domini
+version: 1
+category: 0
 mobile:
   anchor: pascha
   offset: +39
-category: 0
 
 history:
   - from: 1969
     to: ~
-    title: "Ascensio Domini"
     precedence: 1
     nature: sollemnitas
     color: albus
     season: tempus_paschale
+    # title → i18n/la/ascensio_domini.yaml : { 1969: { title: "Ascensio Domini" } }
 ```
 
 **Résolution en 2025 :** Pâques 2025 = `doy 110` (20 avril, DOY 0-based). Ascension = `doy 110 + 39 = 149` (29 mai 2025).
@@ -872,9 +1097,9 @@ history:
 
 Voir §4.3 pour l'exemple complet avec béatification (2011–2013) et canonisation (2014–présent).
 
-**Résolution de la Forge pour l'année 2012 :** `from=2011, to=2013` contient 2012 → `title = "B. Ioannes Paulus II"`, `precedence = 11`, `nature = memoria`.
+**Résolution de la Forge pour l'année 2012 :** `from=2011, to=2013` contient 2012 → `precedence = 11`, `nature = memoria`. Label via `ioannis_pauli_ii.2011.title` → `"B. Ioannes Paulus II"` (dict `i18n/la/`).
 
-**Résolution pour l'année 2014 :** `from=2014, to=~` contient 2014 → `title = "S. Ioannes Paulus II"`, `precedence = 12`, `nature = memoria`.
+**Résolution pour l'année 2014 :** `from=2014, to=~` contient 2014 → `precedence = 12`, `nature = memoria`. Label via `ioannis_pauli_ii.2014.title` → `"S. Ioannes Paulus II"`.
 
 **Résolution pour l'année 2009 :** aucune entrée ne contient 2009 → `Ok(None)` → fête absente du dataset 2009.
 
@@ -884,40 +1109,91 @@ Voir §4.3 pour l'exemple complet avec béatification (2011–2013) et canonisat
 
 ```yaml
 # data/dioecesana/PARIS/sanctorale/dionysii_parisiensis.yaml
-# scope=diocesan, region=PARIS déduits du chemin
+# slug = "dionysii_parisiensis", scope = diocesan, region = PARIS — tous déduits du chemin
 
-format_version: 1
-slug: dionysii_parisiensis
+version: 1
+category: 2
 date:
   month: 10
   day: 9 # doy = 274 + 8 = 282
-category: 2
 
 history:
   - from: 1969
     to: ~
-    title: "S. Dionysius, ep. et socii, mm."
-    precedence: 4 # Solennité pour le diocèse de Paris (patron)
+    precedence: 4
     nature: sollemnitas
     color: rubeus
+    # title → i18n/la/dionysii_parisiensis.yaml (dans dioecesana/PARIS/i18n/)
 ```
 
 **Comportement Forge :** lors d'une compilation `CompilationTarget::Diocesan { region: "FR", diocese: "PARIS" }`, la Forge découvre et ingère les fichiers dans l'ordre de §1.4 : universale, puis nationalia/FR, puis dioecesana/PARIS. Si le 9 octobre est également occupé par une fête nationale ou universelle de `Precedence` ≥ 4, la Forge applique Conflict Resolution (Étape 3) : la Solennité diocésaine (`Precedence = 4`) a la même valeur que les Solennités du calendrier général — la règle de scope local l'emporte à égalité de `Precedence`.
 
 ---
 
+### 9.5 Dictionnaire i18n — Exemple Complet
+
+Corpus YAML (graphe métier pur) et dictionnaires i18n correspondants pour `ioannis_pauli_ii` :
+
+```yaml
+# data/nationalia/PL/sanctorale/ioannis_pauli_ii.yaml  ← graphe métier
+version: 1
+category: 1
+date:
+  month: 10
+  day: 22
+history:
+  - from: 2011
+    to: 2013
+    precedence: 11
+    nature: memoria
+    color: albus
+  - from: 2014
+    to: ~
+    precedence: 12
+    nature: memoria
+    color: albus
+```
+
+```yaml
+# i18n/la/ioannis_pauli_ii.yaml  ← source latine obligatoire
+2011:
+  title: "B. Ioannes Paulus II, pp."
+2014:
+  title: "S. Ioannes Paulus II, pp."
+```
+
+```yaml
+# i18n/fr/ioannis_pauli_ii.yaml  ← traduction française (partielle admise)
+2014:
+  title: "Saint Jean-Paul II, pape"
+  # 2011 absent : la Forge fusionne le latin en fallback AOT pour cette clé
+```
+
+**Clés implicites résolues par la Forge :**
+
+| Clé composite              | Source  | Valeur résolue                   |
+|----------------------------|---------|----------------------------------|
+| `ioannis_pauli_ii.2011.title` | `la` | `"B. Ioannes Paulus II, pp."`    |
+| `ioannis_pauli_ii.2014.title` | `la` | `"S. Ioannes Paulus II, pp."`    |
+| `ioannis_pauli_ii.2011.title` | `fr` | `"B. Ioannes Paulus II, pp."` ← fallback latin |
+| `ioannis_pauli_ii.2014.title` | `fr` | `"Saint Jean-Paul II, pape"`     |
+
+---
+
 ## 10. Checklist de Conformité YAML
 
-Avant de soumettre un fichier à la Forge :
+Avant de soumettre un fichier YAML à la Forge :
 
-- [ ] `format_version: 1` présent dans chaque fichier
+**Fichier YAML (graphe métier)**
+- [ ] `version: 1` présent dans chaque fichier (`format_version` est **supprimé** — erreur fatale si présent)
 - [ ] Le fichier est placé dans le répertoire correct selon son scope : `universale/`, `nationalia/{ISO}/`, `dioecesana/{ID}/`
-- [ ] Le nom du fichier correspond exactement au `slug` déclaré (`{slug}.yaml`)
+- [ ] Le nom du fichier (stem) **est** le slug — aucune clé `slug` dans le corps YAML
+- [ ] Le stem satisfait `[a-z][a-z0-9_]*` — latin snake_case, premier caractère alphabétique
+- [ ] Le stem est **neutre** liturgiquement — aucun statut (saint, bienheureux…) encodé dans le nom
 - [ ] Le fichier est dans `temporale/` si la fête est déclarée avec `mobile:`, dans `sanctorale/` si déclarée avec `date:`
 - [ ] Chaque fête a exactement un bloc `date` ou `mobile` — jamais les deux
-- [ ] Tous les slugs sont en latin snake_case **neutre** — aucun statut liturgique encodé
-- [ ] Le slug est stable dans le temps (immuable après première allocation)
-- [ ] L'évolution du titre et de la `precedence` est portée par des entrées `history` distinctes
+- [ ] **Aucun champ textuel** (`title`, `name`, `description`, …) dans aucun bloc `history[]` — le YAML est un graphe de données pur
+- [ ] L'évolution de `precedence` ou de `nature` est portée par des entrées `history` distinctes
 - [ ] Les plages `[from, to]` du bloc `history` sont disjointes pour un même slug/scope
 - [ ] `precedence` ∈ [0, 12] pour chaque entrée `history` — jamais 13, 14 ou 15
 - [ ] `nature` est l'une des 5 valeurs admises (§6.2) — aucun terme canonique informel
@@ -925,11 +1201,19 @@ Avant de soumettre un fichier à la Forge :
 - [ ] `from` ≥ 1969 et `to` ≤ 2399 pour toutes les entrées `history`
 - [ ] `from` est renseigné explicitement si différent de 1969
 - [ ] `id` absent sauf besoin documenté d'un identifiant stable
-- [ ] Les entrées `scope: national` ou `scope: diocesan` portent un champ `region` non-null
-- [ ] Les fêtes au 29 février (`date.month: 2, date.day: 29`) sont intentionnelles — la Forge génère une Padding Entry les années non-bissextiles
+- [ ] Si bloc `transfers` présent : chaque entrée déclare `offset` **ou** `date`, jamais les deux, jamais aucun
+- [ ] Si bloc `transfers` présent : chaque valeur de `collides` est un slug existant dans le corpus
+- [ ] Si bloc `transfers` présent : chaque valeur de `collides` est unique dans le bloc
+- [ ] Les fêtes au 29 février (`date.month: 2, date.day: 29`) sont intentionnelles — Padding Entry les années non-bissextiles
+
+**Dictionnaire i18n (à livrer avec tout nouveau fichier YAML)**
+- [ ] Un fichier `i18n/la/{slug}.yaml` existe pour chaque fichier YAML soumis
+- [ ] Pour chaque entrée `history[]` avec `from: Y`, une clé `Y: { title: "…" }` est présente dans `i18n/la/{slug}.yaml`
+- [ ] Aucune clé orpheline dans les dictionnaires : toute année `Y` déclarée dans un dictionnaire correspond à un `from: Y` dans le YAML correspondant
+- [ ] Les dictionnaires d'autres langues peuvent être partiels — le fallback latin est géré par la Forge (fusion AOT)
 
 ---
 
-**Fin du Contrat de Données Amont v1.0**
+**Fin du Contrat de Données Amont v1.3**
 
-_Document créé le 2026-03-07. Révisé le 2026-03-08. Contrat de données amont de la Forge (`liturgical-calendar-forge`). Définit le format YAML des calendriers liturgiques (universel, national, diocésain), les règles de validation V1–V6, et le mapping vers `CalendarEntry`. Référence : `specification.md` v2.0, §3–§5, §10._
+_Document créé le 2026-03-07. Révisé le 2026-04-09 (v1.3). Contrat de données amont de la Forge (`liturgical-calendar-forge`). Modifications v1.2 : slug déduit du stem, `version` remplace `format_version`, bloc `transfers`, Groupe E (V-T1–V-T3). Modifications v1.3 : séparation canon/labels — zéro String dans le YAML ; dictionnaires i18n externes ; identité `{slug}.{from}.{field}` ; Groupe F (V-I1, V-I2) ; §4.4 ; §9.5. Référence : `specification.md` v2.0, §3–§5, §10._

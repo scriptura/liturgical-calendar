@@ -5,8 +5,8 @@
 **Workspace** : `liturgical-calendar-forge` (std) / `liturgical-calendar-core` (no_std, no_alloc)  
 **Langage Domaine** : Latin (Strictement Canonique)  
 **Déterminisme** : Bit-for-bit reproductible  
-**Date de Révision** : 2026-04-05  
-**Version** : 2.0.1
+**Date de Révision** : 2026-04-09  
+**Version** : 2.0.4
 
 ---
 
@@ -472,13 +472,15 @@ Identifiant unique d'une fête liturgique. Représenté sur **u16** dans `Calend
 
 ## 6. Pipeline de la Forge
 
-La Forge exécute **5 étapes ordonnées et séquentielles**. Un échec dans une étape interrompt le pipeline. Les étapes 3 et 4 opèrent en deux passes (résolution puis matérialisation) pour garantir la clôture transitive des transferts avant toute écriture binaire.
+La Forge exécute **6 étapes ordonnées et séquentielles**. Un échec dans une étape interrompt le pipeline. Les étapes 4 et 5 opèrent en deux passes (résolution puis matérialisation) pour garantir la clôture transitive des transferts avant toute écriture binaire.
 
 ---
 
 ### Étape 1 — Rule Parsing
 
-Ingestion des fichiers YAML, validation syntaxique, construction du `FeastRegistry`. Application des validations V1–V6 (§10). Toute violation est fatale — aucune sortie partielle.
+Ingestion des fichiers YAML, validation syntaxique, construction du `FeastRegistry`. Application des validations V1–V6, V-T1–V-T3 (§10). Toute violation est fatale — aucune sortie partielle.
+
+Le YAML est traité comme un **graphe de données pur** : aucun champ textuel (`title`, `name`, …) n'est présent ni attendu. Les structs de désérialisation Rust rejettent tout champ inconnu via `#[serde(deny_unknown_fields)]` — la présence d'un `title:` produit `ParseError::MalformedYaml`.
 
 **INV-FORGE-1 — Ordre d'ingestion canonique et déterministe :**
 
@@ -533,35 +535,66 @@ SI YAML.id absent  ET slug présent dans lock → utiliser lock[slug] silencieus
 
 ---
 
-**Convention de nommage des champs YAML réservés :**
+**Convention champs serde réservés :**
 
 Tout champ serde désérialisé depuis le YAML mais non consommé dans le jalon courant est préfixé par `_` **dans le struct Rust**, avec un attribut `#[serde(rename = "nom_yaml")]` pour maintenir la compatibilité de désérialisation :
 
 ```rust
 #[derive(Deserialize)]
 struct YamlFile {
-    scope:          String,
-    region:         Option<String>,
+    version:  u32,           // "version" — remplace l'ancien "format_version" (supprimé v1.2)
+    category: u8,
     #[serde(rename = "from")]
-    _from:          Option<u16>,  // réservé Jalon 3 — versioning temporel
+    _from:    Option<u16>,   // réservé Jalon 3 — versioning temporel
     #[serde(rename = "to")]
-    _to:            Option<u16>,  // réservé Jalon 3 — versioning temporel
-    format_version: u32,
-    feasts:         Vec<YamlFeast>,
+    _to:      Option<u16>,   // réservé Jalon 3 — versioning temporel
+    // slug : absent — déduit du path.file_stem() avant désérialisation (§2.1 scheme)
+    // scope, region : déduits du chemin — non désérialisés depuis le YAML
 }
 ```
 
-Cette convention :
+---
 
-- Supprime les warnings `dead_code` sans `#[allow]` global
-- Maintient la désérialisation de fichiers YAML contenant ces clés
-- Documente l'intention (réservé, pas supprimé)
+### Étape 1bis — i18n Resolution
 
-La même convention s'applique à tout champ futur ajouté au schéma YAML avant son implémentation.
+Corrélation entre le `FeastRegistry` construit en Étape 1 et les dictionnaires `i18n/` externes. Application des validations V-I1 et V-I2 (§10). Toute violation est fatale.
+
+**Entrées :** `FeastRegistry` (ensemble des slugs + plages `[from, to]` de chaque `history[]`), arborescence `i18n/` (§4.4 scheme).
+
+**Algorithme :**
+
+```
+POUR chaque (slug, from) dans le FeastRegistry :
+  SI i18n/la/{slug}.yaml absent         → ParseError::I18nMissingLatinKey { slug, from=*, field="title" }
+  SI clé {from}.title absente dans la/  → ParseError::I18nMissingLatinKey { slug, from, field="title" }
+
+POUR chaque lang ∈ langues_compilées :
+  POUR chaque clé (from, field) dans i18n/{lang}/{slug}.yaml :
+    SI from ∉ froms_connus(slug)        → ParseError::I18nOrphanKey { slug, lang, from, field }
+```
+
+**Fusion AOT (fallback latin) :**
+
+La Forge construit pour chaque `(slug, from, field, lang)` la valeur résolue :
+
+```rust
+fn resolve_label<'a>(
+    slug: &str, from: u16, field: &str, lang: &str,
+    dicts: &'a DictStore,
+) -> &'a str {
+    dicts.get(lang, slug, from, field)
+        .or_else(|| dicts.get("la", slug, from, field))
+        .expect("V-I1 guarantees latin key exists") // invariant garanti Étape 1bis
+}
+```
+
+Le résultat est un `LabelTable` plat : `BTreeMap<(FeastID, u16 from, Lang), String>`, consommé par l'Étape 6 pour produire le `.lits`.
+
+**Artefact intermédiaire :** `LabelTable` — structure en mémoire, non persistée. Elle n'influence pas le `.kald`.
 
 ---
 
-### Étape 2 — Canonicalization
+### Étape 3 — Canonicalization
 
 - Résolution de toutes les dates mobiles : Pâques (Meeus/Jones/Butcher), `SeasonBoundaries::compute`
 - Calcul des DOY 0-based via `MONTH_STARTS` pour toutes les dates fixes et mobiles
@@ -620,9 +653,55 @@ Trois niveaux de vérification à implémenter dans la suite de tests de la Forg
 
 ---
 
-### Étape 3 — Conflict Resolution
+### Étape 4 — Conflict Resolution
 
 Résolution définitive des préséances et transferts de fêtes. **Aucun conflit ne doit atteindre l'Engine.** Sortie : table `(year, doy) → (primary_feast, [secondary_feasts])` sans ambiguïté.
+
+#### 3.0 `ResolutionKey` — Clé de Tri Canonique
+
+Toute collision sur un slot DOY est traitée non comme une décision conditionnelle mais comme un **problème d'ordonnancement** : les fêtes candidates sont triées selon une clé totale et stable, et l'élément d'index 0 est élu `primary`. Aucun `if/else` métier dans le code de résolution.
+
+**Définition — `liturgical-calendar-forge/src/resolution.rs` :**
+
+```rust
+/// Clé de tri canonique pour la désignation primary/secondary au sein d'un slot DOY.
+/// Ordre lexicographique natif via derive(Ord). Valeur inférieure = priorité supérieure.
+/// Scope : Forge uniquement. Absent du Core et du .kald.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct ResolutionKey<'a> {
+    pub precedence:  u8,          // [0, 12] — inférieur = priorité plus haute
+    pub cycle:       Cycle,       // Temporal(0) < Sanctoral(1)
+    pub temporality: Temporality, // Fixed(0) < Mobile(1)
+    pub slug:        &'a str,     // tiebreaker final — ordre lexicographique ASCII
+}
+
+/// Cycle liturgique — dérivé de la présence du bloc `mobile:` ou `date:` dans le YAML.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum Cycle {
+    Temporal  = 0,  // fête déclarée avec `mobile:` (Proprium de Tempore)
+    Sanctoral = 1,  // fête déclarée avec `date:`   (Sanctoral fixe)
+}
+
+/// Temporalité de la fête — fixe ou calculée depuis une ancre.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum Temporality {
+    Fixed  = 0,  // bloc `date:`   — DOY constant
+    Mobile = 1,  // bloc `mobile:` — DOY calculé depuis Pâques/Avent
+}
+```
+
+**Propriétés de la clé :**
+
+| Critère | Type | Signification de la valeur inférieure |
+|---------|------|---------------------------------------|
+| `precedence` | `u8` | Rang liturgique plus élevé (Solennité < Mémoire) |
+| `cycle` | `Cycle` | Temporal prime sur Sanctoral à égalité de Precedence |
+| `temporality` | `Temporality` | Fête fixe prime sur fête mobile à égalité de Cycle |
+| `slug` | `&str` | Tiebreaker final stable — ordre ASCII, déterministe cross-build |
+
+**Invariant de `slug` comme tiebreaker :** le slug est dérivé du stem du nom de fichier — il est stable entre builds (contrairement au FeastID, qui dépend de l'ordre d'allocation du lock). Son usage comme tiebreaker ne produit **aucun `ConflictWarning`** : c'est un ordonnancement mécanique attendu, pas une anomalie de corpus.
+
+**Relation avec `Cycle` / `Temporality` :** dans la pratique actuelle du schéma, `Cycle::Temporal` implique `Temporality::Mobile` et `Cycle::Sanctoral` implique `Temporality::Fixed`. Les deux champs sont conservés distincts par clarté sémantique et pour préserver la surface d'extension (ex: une fête sanctorale à date calculée en v2.x ne casserait pas la clé).
 
 #### 3.1 Règle de surcharge par Scope
 
@@ -632,94 +711,96 @@ Pour un DOY donné, si plusieurs fêtes coexistent issues de scopes différents,
 diocesan > national > universal
 ```
 
-Le scope le plus local fournit la fête principale (`primary_feast`). Les fêtes de scopes moins locaux dont la `Precedence` les rend commémorables sont versées dans `[secondary_feasts]`.
+La hiérarchie de scope est résolue **avant** le tri canonique (§3.0). Elle détermine quels candidats entrent dans le tri — elle n'est pas un critère de la `ResolutionKey`. Le scope le plus local fournit la fête principale (`primary_feast`). Les fêtes de scopes moins locaux dont la `Precedence` les rend commémorables rejoignent les candidats secondaires.
 
-#### 3.2 Règle de Precedence intra-scope
+#### 3.2 Garde de Solennité (V7) — Pré-tri
 
-Au sein d'un même scope, la fête de `Precedence` numériquement inférieure (priorité plus haute) devient `primary_feast`. L'autre est traitée selon son rang : commémorée (`secondary_feasts`) si `Precedence ∈ [8, 12]`, supprimée du slot sinon.
+**Cas Precedence ∈ [0, 3], tout scope :**
 
-#### 3.3 Règle de départage à égalité de Precedence
+Les rangs 0 à 3 (TriduumSacrum, SollemnitatesFixaeMaior, DominicaePrivilegiataeMaior, FeriaePrivilegiataeMaior) sont structurellement uniques — deux fêtes légitimes de ce rang ne peuvent coexister sur le même DOY. Une telle collision indique un corpus fondamentalement incohérent. Détection **avant le tri**.
 
-Le traitement diffère selon le rang **et la relation de scope** entre les deux fêtes en collision.
+**Cas Precedence ∈ [4, 5], même scope :**
 
-**Cas Precedence ∈ [0, 3] — Toujours fatal (`V7`) :**
+Deux Solennités de même scope et de même rang sur le même DOY sont irrésolubles mécaniquement. Détection **avant le tri**.
 
-Les rangs 0 à 3 (TriduumSacrum, SollemnitatesFixaeMaior, DominicaePrivilegiataeMaior, FeriaePrivilegiataeMaior) sont structurellement uniques dans le calendrier liturgique — il n'existe pas deux fêtes légitimes du même rang aux mêmes dates. Une collision à ce niveau, quel que soit le scope, indique un corpus YAML fondamentalement incohérent.
+Dans les deux cas :
 
 ```
 ForgeError::SolemnityCollision {
-    slug_a: "...", slug_b: "...",
-    precedence: N,   // valeur ≤ 3
-    scope_a: "...", scope_b: "...",
-    doy: N, year: Y
+    slug_a, slug_b, precedence, scope_a, scope_b, doy, year
 }
 ```
 
-Aucun `.kald` n'est produit. Arbitrage humain requis.
+Compilation interrompue. Arbitrage humain requis dans le YAML.
 
-**Cas Precedence ∈ [4, 5], scopes différents — Résolution automatique par hiérarchie de scope :**
+**Cas Precedence ∈ [4, 5], scopes différents :** la hiérarchie de scope (§3.1) s'applique automatiquement — ce cas n'est pas fatal.
 
-Une fête diocésaine ou nationale de rang 4–5 (SollemnitatesGenerales, SollemnitatesPropria) qui coïncide avec une fête universelle de même rang est le **cas nominal** : la fête locale remplace légitimement la fête universelle. La hiérarchie `diocesan > national > universal` (§3.1) s'applique sans avertissement.
+**Cas Precedence ≥ 6 :** résolu intégralement par le tri canonique `ResolutionKey` — aucune branche conditionnelle.
 
-**Cas Precedence ∈ [4, 5], même scope — Erreur fatale :**
+#### 3.3 Pipeline de Résolution — Structure en Cinq Passes
 
-Deux Solennités du même scope et de même rang au même DOY constituent une anomalie irrésoluble. La Forge interrompt la compilation avec `ForgeError::SolemnityCollision`. Arbitrage humain requis dans le YAML (ajuster les rangs ou différencier les scopes).
-
-**Cas Precedence ≥ 6 — Résolution automatique avec avertissement :**
-
-Pour les Fêtes et Mémoires (même scope, même rang), le tiebreaker déterministe s'applique dans l'ordre :
-
-```
-1. Fixe > Mobile        (date calendaire fixe prime sur date calculée depuis Pâques)
-2. Temporal > Sanctoral (cycle pascal prime sur commémoration de saint)
-3. FeastID croissant    (tiebreaker final : FeastID plus petit = alloué en premier
-                         dans le FeastRegistry = antériorité déterministe)
-```
-
-La règle 3 est un choix d'architecture, non liturgique. Son activation produit obligatoirement :
-
-```
-ConflictWarning { slug_a: "...", slug_b: "...", doy: N, year: Y,
-                  resolution: "FeastID tiebreaker applied — YAML revision advised" }
-```
-
-Le `.kald` est produit, mais ce signal indique un corpus à réviser.
-
-#### 3.4 Transferts de Solennités — Structure en Cinq Passes
-
-Certaines fêtes de haute priorité ne peuvent être supprimées quand elles entrent en conflit : elles sont **transférées** au prochain slot disponible. Ce mécanisme est **non local** — résoudre le DOY N peut modifier N+1 ou N+2 — et peut produire des cascades.
-
-La résolution est structurée en cinq passes séquentielles. La séparation explicite des passes garantit que chaque phase opère sur une table stable produite par la phase précédente — aucun effet de bord inter-passes.
+Certaines fêtes de haute priorité ne peuvent être supprimées quand elles entrent en conflit : elles sont **transférées** au prochain slot disponible. Ce mécanisme est **non local** et peut produire des cascades. Les cinq passes garantissent que chaque phase opère sur une table stable produite par la phase précédente.
 
 ```
 POUR chaque année dans [1969, 2399] :
 
-  PASSE 1 — Placement des fêtes fixes (Sanctoral)
+  PASSE 1 — Collecte et placement
     Précondition : table vide pour cette année.
-    Itérer les slugs à date fixe dans l'ordre lexicographique des slugs.
-    Insérer chaque fête dans son slot DOY via MONTH_STARTS.
-    Conflits fixes × fixes : résolus par §3.1/§3.2/§3.3 immédiatement.
-    Sortie : table partielle (doy → feast_list) sans fêtes mobiles.
+    Placer toutes les fêtes (fixes et mobiles) dans leur slot DOY :
+      — Fêtes fixes   : DOY via MONTH_STARTS (§2.2)
+      — Fêtes mobiles : DOY via résolution Pâques/Avent (Étape 3)
+    Résultat : BTreeMap<u16 (doy), Vec<PlacedFeast>> — liste non encore triée.
+    Aucun conflit n'est résolu dans cette passe.
 
-  PASSE 2 — Placement des fêtes mobiles (Temporal)
-    Précondition : table issue de Passe 1.
-    Itérer les fêtes mobiles dans l'ordre DOY croissant (Pâques d'abord,
-    puis offsets positifs, puis offsets négatifs pour Cendres/Rameaux).
-    Conflits mobiles × fixes : §3.1/§3.2/§3.3.
-    Conflits mobiles × mobiles : §3.2/§3.3 (ne survient qu'en cas de YAML mal formé).
-    Sortie : table complète (toutes les fêtes placées, conflits de rang résolus).
-    Aucun transfert n'est exécuté dans cette passe.
+  PASSE 2 — Garde V7 + résolution de scope (§3.1, §3.2)
+    Pour chaque slot DOY avec plusieurs fêtes candidates :
+      a. Appliquer la hiérarchie de scope (§3.1) :
+           SI deux fêtes de scopes différents et Precedence ∈ [4,5] :
+             la fête du scope le plus local reste candidate, l'autre est retirée.
+      b. Détecter et rejeter les collisions fatales (§3.2) :
+           SI même scope + Precedence ≤ 3      → ForgeError::SolemnityCollision (fatal)
+           SI même scope + Precedence ∈ [4, 5] → ForgeError::SolemnityCollision (fatal)
+    Sortie : liste de candidats validée par slot — garantie sans collision fatale.
 
-  PASSE 3 — Résolution finale des préséances
-    Précondition : table issue de Passe 2.
-    Pour chaque DOY, appliquer §3.5 (déclassement saisonnier) :
-      — La saison du slot (fournie par SeasonBoundaries) détermine si des
-        Mémoires doivent être rétrogradées en secondary_feasts.
-    Identifier toutes les fêtes transférables en attente :
-      Une fête est transférable si Precedence ≤ 9 ET Nature ≠ Feria ET
-      elle a été évincée de son slot par une fête de rang supérieur.
-    Alimenter la TransferQueue (§3.4 infra).
-    Sortie : table avec secondary_feasts peuplés, TransferQueue initialisée.
+  PASSE 3 — Tri Canonique + Élection + Déclassement + Dispatch Transferts
+    Pour chaque slot DOY :
+
+    [TRI]
+      slot.sort_unstable_by_key(|f| ResolutionKey {
+          precedence:  f.precedence as u8,
+          cycle:       f.cycle(),        // Cycle::Temporal si mobile:, Sanctoral si date:
+          temporality: f.temporality(),  // Temporality::Fixed si date:, Mobile si mobile:
+          slug:        f.slug.as_str(),
+      });
+
+    [ÉLECTION]
+      primary               = slot[0]
+      secondary_candidates  = slot[1..]
+
+    [DÉCLASSEMENT SAISONNIER — §3.4]
+      Calculer la saison du slot (SeasonBoundaries de l'année courante).
+      Pour chaque fête dans secondary_candidates :
+        SI should_demote_to_commemoratio(f, saison) → forcer en secondary_feasts
+                                                       quelle que soit sa Precedence.
+
+    [PARTITION]
+      secondary_feasts ← secondary_candidates où Precedence ∈ [8, 12]
+                         (commémorables — versés dans le Secondary Pool)
+      to_transfer      ← secondary_candidates où Precedence ≤ 9
+                         ET Nature ≠ Feria
+                         ET non déjà en secondary_feasts
+                         (transférables — ne peuvent être supprimés)
+      suppressed       ← reste (évincés sans transfert ni commémoration)
+
+    [DISPATCH TRANSFERTS — §2.4 scheme]
+      Pour chaque fête dans to_transfer :
+        SI bloc transfers présent ET entrée collides == primary.slug :
+          Appliquer règle déclarative (offset ou date fixe).
+          Résolution à un seul niveau — pas de réapplication récursive.
+        SINON :
+          Alimenter TransferQueue générique.
+
+    Sortie : table (doy → ResolvedDay { primary, secondary_feasts }), TransferQueue.
 
   PASSE 4 — Exécution des transferts (clôture transitive)
     Précondition : TransferQueue issue de Passe 3.
@@ -730,7 +811,7 @@ POUR chaque année dans [1969, 2399] :
       Chercher doy_dst dans [doy_src+1, doy_src+7] :
         → premier DOY où l'occupant a Precedence > feast.precedence.
       SI doy_dst trouvé :
-        Insérer feast dans doy_dst (§3.2 s'applique au slot cible).
+        Appliquer ResolutionKey au slot cible avec la fête insérée.
         SI l'occupant de doy_dst est lui-même transférable :
           L'enqueuer avec profondeur + 1 (BTreeSet — pas de doublon possible).
       SI doy_dst introuvable dans la fenêtre :
@@ -769,10 +850,6 @@ impl TransferQueue {
         depth: u8,
     ) -> Result<(), ForgeError> {
         if depth > MAX_TRANSFER_DEPTH {
-            // Profondeur dépassée = 8 jours consécutifs tous bloquants.
-            // POLITIQUE : erreur fatale. Aucun déclassement automatique.
-            // Justification : déclasser une Solennité en Mémoire est canoniquement
-            // invalide. La Forge ne tranche pas une décision théologique.
             return Err(ForgeError::TransferFailed {
                 slug:       feast.slug.clone(),
                 origin_doy: doy_src.saturating_sub(depth as u16),
@@ -790,10 +867,6 @@ impl TransferQueue {
 
 **`ForgeError::TransferFailed` — erreur fatale, aucune dérogation :**
 
-Cas réel : une Solennité à transférer trouve 7 jours consécutifs tous occupés par des fêtes de rang supérieur ou égal. Ce cas survient typiquement en fin de Semaine Sainte (ex : Annonciation tombant le Samedi Saint dans une semaine suivie de fêtes diocésaines denses).
-
-La Forge interrompt la compilation et produit un message d'erreur actionnable :
-
 ```
 ERREUR FORGE : Transfert impossible
   Fête    : annuntiatio_domini (Precedence=1)
@@ -803,15 +876,15 @@ ERREUR FORGE : Transfert impossible
              ou redéfinir la plage [from, to] de la fête concurrente
 ```
 
-**Le déclassement automatique d'une Solennité en Mémoire n'est pas une option.** Ce serait une décision liturgique prise sans mandat. La Forge est un compilateur : elle exécute des règles, elle n'invente pas de droit.
+**Le déclassement automatique d'une Solennité en Mémoire n'est pas une option.** La Forge exécute des règles, elle n'invente pas de droit liturgique.
 
-**Invariant de transfert :** une fête insérée par transfert applique les mêmes règles de Precedence que si elle était originellement présente dans le slot cible. Elle ne bénéficie d'aucune priorité liée à son transfert.
+**Invariant de transfert :** une fête insérée par transfert est re-triée via `ResolutionKey` dans son slot cible. Elle ne bénéficie d'aucune priorité liée à son transfert.
 
-**Cas limite documenté — cascade Semaine Sainte :** l'Annonciation (25 mars, Precedence = 1) tombant en Semaine Sainte est transférée au lundi après l'Octave de Pâques. Si ce lundi est occupé par une Mémoire obligatoire, la Mémoire passe en `secondary_feasts`. Ce comportement est conforme au Novus Ordo (GNLYC §60).
+**Cas limite documenté — cascade Semaine Sainte :** l'Annonciation (25 mars, Precedence = 1) tombant en Semaine Sainte est transférée au lundi après l'Octave de Pâques. Si ce lundi est occupé par une Mémoire obligatoire, la Mémoire est positionnée en `secondary_feasts` par le tri canonique. Conforme au Novus Ordo (GNLYC §60).
 
-#### 3.5 Déclassement Saisonnier — Carême et Avent
+#### 3.4 Déclassement Saisonnier — Carême et Avent
 
-Pendant certaines périodes liturgiques (`TempusQuadragesimae`, `TempusAdventus`), les Mémoires obligatoires (`Precedence = 11`) perdent leur caractère prescriptif et deviennent des **Commémorations facultatives**. Ce déclassement est lié à la période opérationnelle — il ne modifie pas le FeastID ni les propriétés permanentes de la fête.
+Pendant certaines périodes liturgiques (`TempusQuadragesimae`, `TempusAdventus`), les Mémoires obligatoires (`Precedence = 11`) perdent leur caractère prescriptif et deviennent des **Commémorations facultatives**. Ce déclassement est appliqué dans la **Passe 3** (étape [DÉCLASSEMENT SAISONNIER]) du pipeline §3.3 — il ne modifie pas le FeastID ni les propriétés permanentes de la fête.
 
 **Mécanisme de matérialisation :**
 
@@ -841,7 +914,7 @@ Si `should_demote_to_commemoratio` est vrai, la fête est ajoutée à `secondary
 
 ---
 
-### Étape 4 — Day Materialization
+### Étape 5 — Day Materialization
 
 - Génération des 366 slots par an pour la plage 1969–2399, en itérant les années dans l'ordre croissant (1969 → 2399) et les DOY dans l'ordre croissant (0 → 365)
 - Placement de la Padding Entry (`primary_id = 0`, `secondary_count = 0`, `flags = 0`) à `doy = 59` pour chaque année non-bissextile
@@ -889,13 +962,22 @@ La déduplication réduit la taille du pool en exploitant la répétition des co
 
 ---
 
-### Étape 5 — Binary Packing
+### Étape 6 — Binary Packing
 
-- Encodage `flags` depuis les valeurs de `Precedence`, `Color`, `LiturgicalPeriod`, `Nature` résolus en Étape 3
+**Production `.kald` :**
+- Encodage `flags` depuis les valeurs de `Precedence`, `Color`, `LiturgicalPeriod`, `Nature` résolus en Étape 4
 - Sérialisation LE canonique de chaque `CalendarEntry`, dans l'ordre index croissant
 - Calcul SHA-256 sur `[Data Body ∥ Secondary Pool]`
 - Construction et écriture du `Header` (64 octets)
 - Validation post-écriture : relecture via `kal_validate_header`
+
+**Production `.lits` (une par langue compilée) :**
+- Consomme le `LabelTable` produit en Étape 1bis
+- Pour chaque langue, construit l'Entry Table triée par `(feast_id, from)` et le String Pool UTF-8
+- Écrit le Header `.lits` avec `kald_build_id = kald_checksum[..8]`
+- Produit un fichier autonome et complet par langue — aucun lien de dépendance inter-langues
+
+**Invariant de production :** le `.kald` est produit **avant** les `.lits`. Le `kald_build_id` du header `.lits` est calculé depuis le SHA-256 du `.kald` finalisé.
 
 #### 5.1 Diagramme d'état des `flags` pour une fête déclassée
 
@@ -926,7 +1008,7 @@ Les `flags` encodent le **statut résolu au moment de la compilation**, pas le s
   = cette fête      fête concurrente      fête temporelle du jour
                     cette fête →          cette fête →
                     secondary_feasts      secondary_feasts
-                    (si Precedence ≥ 8)   (déclassement §3.5)
+                    (si Precedence ≥ 8)   (déclassement §3.4)
          │               │                       │
          ▼               ▼                       ▼
   ┌──────────────┐  ┌──────────────┐  ┌──────────────────────────┐
@@ -947,7 +1029,7 @@ Les `flags` encodent le **statut résolu au moment de la compilation**, pas le s
                     └──────────────┘
 ```
 
-**Invariants à vérifier en Étape 5 :**
+**Invariants à vérifier en Étape 6 :**
 
 | Invariant                                             | Expression                                    | Erreur si violation               |
 | ----------------------------------------------------- | --------------------------------------------- | --------------------------------- |
@@ -1199,73 +1281,143 @@ Scan linéaire du Data Body. Retourne les `idx` des entrées pour lesquelles `(f
 
 ---
 
-## 9. StringProvider / Format `.lits`
+## 9. Format `.lits` — Language Index Table System
 
-Le format `.lits` fournit les chaînes localisées associées aux FeastIDs. `StringProvider` mappe `FeastID (u16) → Option<&str>`.
+Le `.lits` est l'artefact compagnon du `.kald`. Il contient les labels textuels localisés pour une langue donnée, indexés par `(FeastID, année)`. Un `.lits` est produit par langue compilée. Le `.kald` est toujours produit en premier — le `.lits` est produit à l'**Étape 6**, après que les FeastIDs sont définitivement alloués.
 
-**Header `.lits` (ajout v2.0) :**
+### 9.1 Invariants de séparation
 
-Le fichier `.lits` embarque un champ `kald_build_id : [u8; 8]` dans son header, contenant les 8 premiers octets du SHA-256 du `.kald` avec lequel il a été compilé. Ce champ permet la vérification de cohérence croisée avant toute utilisation conjointe des deux fichiers.
+- Le `.kald` ne contient **aucune chaîne de caractères**. Topologie pure, 8 bytes par slot.
+- Le `.lits` ne contient **aucune donnée de topologie**. Labels uniquement.
+- Les deux artefacts sont liés par le champ `kald_build_id` du header `.lits` — vérification de cohérence obligatoire côté client avant tout accès conjoint.
+
+### 9.2 Data Layout Binaire
+
+```
+[ Header   :  32 octets ]
+[ Entry Table : entry_count × 10 octets ]
+[ String Pool : pool_size octets, UTF-8, offsets en octets depuis le début du pool ]
+```
+
+**Header (32 octets, `#[repr(C)]`) :**
+
+| Champ          | Type      | Offset | Valeur / Note                                      |
+| -------------- | --------- | ------ | -------------------------------------------------- |
+| `magic`        | `[u8; 4]` | 0      | `b"LITS"`                                          |
+| `version`      | `u16 LE`  | 4      | `1`                                                |
+| `lang`         | `[u8; 6]` | 6      | Code langue UTF-8, zéro-padded (ex: `b"la\0\0\0\0"`) |
+| `kald_build_id`| `[u8; 8]` | 12     | 8 premiers octets du SHA-256 du `.kald` compagnon  |
+| `entry_count`  | `u32 LE`  | 20     | Nombre d'entrées dans l'Entry Table               |
+| `pool_offset`  | `u32 LE`  | 24     | Offset du String Pool depuis le début du fichier  |
+| `pool_size`    | `u32 LE`  | 28     | Taille du String Pool en octets                   |
+
+**Entry Table — chaque entrée (10 octets) :**
+
+| Champ        | Type     | Note                                                       |
+| ------------ | -------- | ---------------------------------------------------------- |
+| `feast_id`   | `u16 LE` | FeastID alloué par la Forge                                |
+| `from`       | `u16 LE` | Année de début du bloc `history[]` concerné                |
+| `to`         | `u16 LE` | Année de fin (`0xFFFF` = indéfini)                        |
+| `str_offset` | `u32 LE` | Offset de la chaîne dans le String Pool (octets)           |
+
+La table est triée par `(feast_id ASC, from ASC)`. La recherche d'un label pour `(feast_id, year)` est une **recherche binaire** sur `feast_id`, puis scan linéaire de la plage `from ≤ year ≤ to`.
+
+**String Pool :**
+
+Chaînes UTF-8 concaténées. Chaque chaîne est terminée par `\0`. L'offset pointe vers le premier octet de la chaîne (pas le terminateur). Aucun alignement interne — accès séquentiel uniquement depuis l'Entry Table.
+
+### 9.3 Interface Engine (`no_std`, `no_alloc`)
 
 ```rust
-// Vérification de cohérence — à effectuer par le client avant tout accès
+/// Projecteur de mémoire sur un buffer .lits fourni par l'appelant.
+/// Zéro allocation. Zéro copie. Zéro état interne.
+pub struct LitsProvider<'a> {
+    data: &'a [u8],
+}
+
+impl<'a> LitsProvider<'a> {
+    /// Construit le projecteur depuis un buffer brut.
+    /// Valide uniquement le magic et la version — pas de SHA-256 (responsabilité client).
+    pub fn new(data: &'a [u8]) -> Result<Self, LitsError>;
+
+    /// Retourne le label pour (feast_id, year).
+    /// Recherche binaire sur feast_id + scan plage [from, to].
+    /// None si aucune entrée ne couvre l'année demandée (fête absente pour cet intervalle).
+    pub fn get(&self, feast_id: u16, year: u16) -> Option<&'a str>;
+}
+```
+
+**Complexité :** O(log N + K) avec N = `entry_count` et K = nombre d'entrées pour ce `feast_id` (K ≤ 10 en pratique — nombre de blocs `history[]` d'une fête).
+
+**Contrat `None` :** un `None` indique que la fête n'avait pas de label pour cette année dans cette langue (ex: fête canonisée en 2014, requête en 1990). Ce n'est pas une erreur. Le client gère l'affichage (`"?"`, ID brut, fallback).
+
+### 9.4 Vérification de Cohérence Client
+
+```rust
+// À effectuer par le client avant tout accès conjoint .kald + .lits
 let kald_build_id = &kald_header.checksum[..8];
-if lits_header.kald_build_id != kald_build_id {
-    return Err(ArtifactMismatch {
-        kald_build_id: *kald_build_id,
-        lits_build_id: lits_header.kald_build_id,
-    });
+let lits_build_id = lits_provider.build_id();   // bytes 12–19 du header .lits
+if kald_build_id != lits_build_id {
+    return Err(ArtifactMismatch { kald: *kald_build_id, lits: *lits_build_id });
 }
 ```
 
-Cette vérification est de la responsabilité du **client** (couche `std`), pas de l'Engine — conformément à INV-W5 (zéro diagnostic dans l'Engine).
+Cette vérification est de la responsabilité du **client** (`std`), pas de l'Engine — conformément à INV-W5.
 
-**Contrat `StringProvider::get` :**
+### 9.5 Invariants `.lits`
 
-```rust
-impl StringProvider<'_> {
-    /// Retourne le nom localisé associé au FeastID, ou None si absent.
-    /// Ne panique jamais. Ne retourne jamais de référence invalide.
-    /// Un FeastID absent indique une désynchronisation entre le .kald et le .lits
-    /// (corpus partiellement mis à jour) — le client décide du rendu (ID brut, "?", etc.).
-    pub fn get(&self, id: u16) -> Option<&str>;
-}
-```
-
-**`None` n'est pas une erreur fatale.** Le client traite `None` selon sa politique d'affichage : ID brut hexadécimal (`0x05A1`), chaîne `"?"`, ou valeur de fallback localisée. L'Engine ne prend jamais cette décision.
-
-**Invariants `.lits` :**
-
-- Toutes les lectures numériques utilisent `from_le_bytes` (LE canonique, déterminisme cross-platform)
-- Aucune allocation dans `StringProvider` — opère sur un `&[u8]` fourni par l'appelant (INV-W1, INV-W2)
-- La Forge produit le `.lits` ; l'Engine le consomme en lecture seule
-- Le `kald_build_id` est vérifié par le client avant le premier appel à `StringProvider::get`
+- Toutes les lectures numériques utilisent `from_le_bytes` (LE canonique, déterminisme cross-platform).
+- `LitsProvider` opère sur un `&[u8]` fourni par l'appelant — aucune allocation (INV-W1, INV-W2).
+- La Forge produit le `.lits` à l'Étape 6, après l'allocation définitive des FeastIDs. L'ordre des entrées dans l'Entry Table est déterministe : tri par `(feast_id, from)` croissants.
+- Un seul `.lits` par langue compilée. La Forge produit autant de `.lits` que de langues présentes dans `i18n/`.
+- Le fallback latin est résolu **AOT** (Étape 1bis) — le `.lits` d'une langue ne contient jamais de référence vers le `.lits` latin. Chaque `.lits` est autonome et complet.
 
 ---
 
 ## 10. Validations Forge (V1–V6) et Erreurs de Résolution (V7–V10)
 
-Les validations V1–V6 sont appliquées lors de l'**Étape 1 (Rule Parsing)**. Les erreurs V7–V8 sont levées lors de l'**Étape 3 (Conflict Resolution)**. Les erreurs V9–V10 sont levées lors de l'**Étape 5 (Binary Packing)**. Un seul échec, à n'importe quelle étape, interrompt la compilation. Les codes V1–V10 sont les identifiants canoniques dans les variants `RegistryError` / `ParseError` / `ForgeError` Rust.
+Les validations V1–V6 et V-T1–V-T3 sont appliquées lors de l'**Étape 1 (Rule Parsing)**. Les validations V-I1–V-I2 sont appliquées lors de l'**Étape 1bis (i18n Resolution)**. Les erreurs V7–V8 sont levées lors de l'**Étape 4 (Conflict Resolution)**. Les erreurs V9–V10 sont levées lors de l'**Étape 6 (Binary Packing)**. Un seul échec, à n'importe quelle étape, interrompt la compilation. Les codes V1–V10, V-T1–V-T3 et V-I1–V-I2 sont les identifiants canoniques dans les variants `RegistryError` / `ParseError` / `ForgeError` Rust.
 
-La définition exhaustive de chaque validation V1–V6 (conditions formelles, exemples, hints d'erreur) est dans **`liturgical-scheme.md` §8**. Ce tableau est la clé de correspondance entre les deux documents.
+La définition exhaustive de chaque validation (conditions formelles, hints d'erreur) est dans **`liturgical-scheme.md` §8**. Ce tableau est la clé de correspondance entre les deux documents.
 
-**Validations Étape 1 (Rule Parsing) :**
+**Validations Étape 1 (Rule Parsing) — codes numérotés :**
 
-| Code spec | Variant Rust                                                         | Déclencheur                                                                 | Groupe `liturgical-scheme.md` §8 |
-| --------- | -------------------------------------------------------------------- | --------------------------------------------------------------------------- | -------------------------------- |
-| **V1**    | `RegistryError::TemporalOverlap { slug, year, conflicting_entries }` | Deux versions `history[]` actives la même année, même slug, même scope      | **Groupe B — V2d**               |
-| **V2**    | `RegistryError::InvalidPrecedenceValue(u8)`                          | `precedence > 12` dans une entrée YAML (valeurs 13–15 réservées système)    | **Groupe D — V2-Bis**            |
-| **V3**    | `RegistryError::FeastIDExhausted { scope, category }`                | Dépassement des 4095 séquences allouables par (Scope, Category) — voir §5.1 | **Groupe B — V2c**               |
-| **V4**    | `RegistryError::InvalidTemporalRange { from, to }`                   | `from > to`, ou `from < 1969`, ou `to > 2399`                               | **Groupe C — V3b**               |
-| **V5**    | `RegistryError::UnknownNatureString(String)`                         | Valeur de `nature` non reconnue dans les enums §4.2                         | **Groupe D — V5**                |
-| **V6**    | `RegistryError::InvalidSlugSyntax(String)`                           | Caractère illicite dans le slug (`[a-z][a-z0-9_]*` exigé)                   | **Groupe D — V6**                |
+| Code spec | Variant Rust                                                         | Déclencheur                                                                               | Groupe `liturgical-scheme.md` §8 |
+| --------- | -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | -------------------------------- |
+| **V1**    | `RegistryError::TemporalOverlap { slug, year, conflicting_entries }` | Deux versions `history[]` actives la même année, même slug, même scope                    | **Groupe B — V2d**               |
+| **V2**    | `RegistryError::InvalidPrecedenceValue(u8)`                          | `precedence > 12` dans une entrée YAML (valeurs 13–15 réservées système)                  | **Groupe D — V2-Bis**            |
+| **V3**    | `RegistryError::FeastIDExhausted { scope, category }`                | Dépassement des 4095 séquences allouables par (Scope, Category) — voir §5.1               | **Groupe B — V2c**               |
+| **V4**    | `RegistryError::InvalidTemporalRange { from, to }`                   | `from > to`, ou `from < 1969`, ou `to > 2399`                                             | **Groupe C — V3b**               |
+| **V5**    | `RegistryError::UnknownNatureString(String)`                         | Valeur de `nature` non reconnue dans les enums §4.2                                       | **Groupe D — V5**                |
+| **V6**    | `ParseError::InvalidSlugSyntax(String)`                              | Stem du nom de fichier ne satisfait pas `[a-z][a-z0-9_]*` — rejeté avant parsing YAML    | **Groupe D — V6**                |
 
-**Erreurs Étape 3 (Conflict Resolution) :**
+**Validations additionnelles Étape 1** (sans code V-numéroté dans la spec) :
 
-| Code spec | Variant Rust                                                               | Déclencheur                                                                                                                               |
-| --------- | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| **V7**    | `ForgeError::SolemnityCollision { slug_a, slug_b, precedence, doy, year }` | Deux Solennités (`Precedence ≤ 5`) de même scope et même rang sur le même DOY — arbitrage humain requis dans le YAML (§3.3)               |
-| **V8**    | `ForgeError::TransferFailed { slug, origin_doy, blocked_at, year }`        | Fête transférable (`Precedence ≤ 9`) sans slot libre dans `[doy+1, doy+7]` — aucun déclassement automatique, YAML source à réviser (§3.4) |
+| Variant Rust                                                     | Déclencheur                                                                                                                                          | Groupe `liturgical-scheme.md` §8 |
+| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
+| `ParseError::MalformedYaml` / `UnsupportedSchemaVersion`         | Syntaxe YAML invalide ou `version != 1` (`format_version` est supprimé — sa présence produit `MalformedYaml`)                                        | **Groupe A — V1**                |
+| `RegistryError::DuplicateSlug { slug, scope }`                   | Même stem de fichier déclaré deux fois dans le même scope                                                                                            | **Groupe B — V2a**               |
+| `RegistryError::FeastIDLockConflict { slug, yaml_id, lock_id }`  | Collision entre l'`id` explicite du YAML et le FeastID enregistré dans `feast_registry.lock` pour ce slug — le lock a priorité (INV-FORGE-3)         | **Groupe B — V2b**               |
+| `ParseError::InvalidDate { slug, month, day }`                   | Date fixe impossible (ex: 30 février)                                                                                                                | **Groupe C — V3a**               |
+| `ParseError::CircularDependency { slug, anchor }`                | Cycle dans le graphe des ancres mobiles                                                                                                              | **Groupe D — V4**                |
+| `ParseError::TransferAmbiguous { slug, collides }`               | Entrée `transfers` déclarant `offset` et `date` simultanément                                                                                        | **Groupe E — V-T1**              |
+| `ParseError::TransferEmpty { slug, collides }`                   | Entrée `transfers` sans `offset` ni `date`                                                                                                           | **Groupe E — V-T1**              |
+| `ParseError::UnknownCollidesTarget { slug, collides }`           | Slug déclaré dans `collides` absent du `FeastRegistry` au terme de l'Étape 1                                                                         | **Groupe E — V-T2**              |
+| `ParseError::TransferDuplicateCollides { slug, collides }`       | Deux entrées `transfers` référencent le même concurrent                                                                                              | **Groupe E — V-T3**              |
+
+**Validations Étape 1bis (i18n Resolution) :**
+
+| Variant Rust                                                     | Déclencheur                                                                              | Groupe `liturgical-scheme.md` §8 |
+| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | -------------------------------- |
+| `ParseError::I18nMissingLatinKey { slug, from, field }`          | Clé `{slug}.{from}.{field}` absente du dictionnaire `i18n/la/`                           | **Groupe F — V-I1**              |
+| `ParseError::I18nOrphanKey { slug, lang, from, field }`          | Clé dictionnaire dont l'année `from` est absente du `history[]` YAML correspondant       | **Groupe F — V-I2**              |
+
+**Erreurs Étape 4 (Conflict Resolution) :**
+
+| Code spec | Variant Rust                                                               | Déclencheur                                                                                                                                     |
+| --------- | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| **V7**    | `ForgeError::SolemnityCollision { slug_a, slug_b, precedence, doy, year }` | Deux Solennités (`Precedence ≤ 5`) de même scope et même rang sur le même DOY — arbitrage humain requis dans le YAML (§3.3)                     |
+| **V8**    | `ForgeError::TransferFailed { slug, origin_doy, blocked_at, year }`        | Fête transférable (`Precedence ≤ 9`) sans slot libre dans `[doy+1, doy+7]`, après épuisement des règles déclaratives `transfers` (§3.3 pipeline + §2.4 scheme) |
 
 **Erreurs Étape 4 (Day Materialization) :**
 
@@ -1303,24 +1455,14 @@ impl PoolBuilder {
 
 Si V11 se déclenche, le remède est d'abord de vérifier que INV-FORGE-2 est respecté (déduplication active) avant d'envisager toute extension du format binaire. Passer `secondary_index` à `u32` nécessiterait de porter `CalendarEntry` à 12 octets, brisant le stride de 8 octets — décision d'architecture non triviale à ne pas prendre sans données réelles sur le corpus.
 
-**Erreurs Étape 5 (Binary Packing) :**
+**Erreurs Étape 6 (Binary Packing) :**
 
 | Code spec | Variant Rust                                                            | Déclencheur                                                                                                                                                          |
 | --------- | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **V9**    | `ForgeError::FeastIDMutated { slug, expected_id, found_id, doy, year }` | Le `primary_id` d'une entrée ne correspond pas au FeastID enregistré dans le `FeastRegistry` pour ce slug — corruption interne du pipeline (§5.1)                    |
-| **V10**   | `ForgeError::PaddingEntryMissing { year, doy }`                         | `doy = 59` d'une année non-bissextile ne contient pas la Padding Entry attendue (`primary_id = 0, flags = 0, secondary_count = 0`) — cohérence binaire violée (§5.1) |
+| **V9**    | `ForgeError::FeastIDMutated { slug, expected_id, found_id, doy, year }` | Le `primary_id` d'une entrée ne correspond pas au FeastID enregistré dans le `FeastRegistry` pour ce slug — corruption interne du pipeline                           |
+| **V10**   | `ForgeError::PaddingEntryMissing { year, doy }`                         | `doy = 59` d'une année non-bissextile ne contient pas la Padding Entry attendue (`primary_id = 0, flags = 0, secondary_count = 0`) — cohérence binaire violée        |
 
-**Validations additionnelles Étape 1** (sans code V-numéroté dans la spec) :
-
-| Variant Rust                                                    | Déclencheur                                                                                                                                  | Groupe `liturgical-scheme.md` §8 |
-| --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
-| `ParseError::MalformedYaml` / `UnsupportedSchemaVersion`        | Syntaxe YAML invalide ou `format_version != 1`                                                                                               | **Groupe A — V1**                |
-| `RegistryError::DuplicateSlug { slug, scope }`                  | Même slug déclaré deux fois dans le même scope                                                                                               | **Groupe B — V2a**               |
-| `RegistryError::FeastIDLockConflict { slug, yaml_id, lock_id }` | Collision entre l'`id` explicite du YAML et le FeastID enregistré dans `feast_registry.lock` pour ce slug — le lock a priorité (INV-FORGE-3) | **Groupe B — V2b**               |
-| `ParseError::InvalidDate { slug, month, day }`                  | Date fixe impossible (ex: 30 février)                                                                                                        | **Groupe C — V3a**               |
-| `ParseError::CircularDependency { slug, anchor }`               | Cycle dans le graphe des ancres mobiles                                                                                                      | **Groupe D — V4**                |
-
-**Règle d'interprétation :** tout déclencheur V1–V10 produit un arrêt immédiat. La Forge n'émet aucun `.kald` partiel. Les avertissements (`ConflictWarning`) ne sont pas des erreurs — ils n'interrompent pas la compilation mais doivent être traités avant toute mise en production.
+**Règle d'interprétation :** tout déclencheur V1–V11, V-T1–V-T3 et V-I1–V-I2 produit un arrêt immédiat. La Forge n'émet aucun artefact partiel (ni `.kald`, ni `.lits`). Les avertissements (`ConflictWarning`) ne sont pas des erreurs — ils n'interrompent pas la compilation mais doivent être traités avant toute mise en production.
 
 ---
 
@@ -1344,9 +1486,9 @@ kald-inspect <fichier.kald> [--year <année>] [--doy <doy>] [--dump-pool]
 
 ## Annexe A : FeastRegistry et Format YAML
 
-Le format YAML de saisie des fêtes liturgiques, la logique de versionnement (`history[]`), les champs `from`/`to`, la hiérarchie de scopes (universel / national / diocésain), les règles de nommage des slugs et les algorithmes de résolution temporelle sont définis exhaustivement dans le document **`liturgical-scheme.md` v1.0** — Contrat de Données Amont.
+Le format YAML de saisie des fêtes liturgiques, la logique de versionnement (`history[]`), les champs `from`/`to`, la hiérarchie de scopes (universel / national / diocésain), les règles de nommage des slugs (dérivés du stem du nom de fichier), la structure des dictionnaires i18n et les algorithmes de résolution temporelle sont définis exhaustivement dans le document **`liturgical-scheme.md` v1.3** — Contrat de Données Amont.
 
-Ce document est la **source de vérité unique** pour les Étapes 1 (Rule Parsing) et 2 (Canonicalization) du pipeline Forge. Toute référence à l'Annexe B.11 de la spécification v1.0 est obsolète.
+Ce document est la **source de vérité unique** pour les Étapes 1 et 1bis du pipeline Forge. Toute référence à l'Annexe B.11 de la spécification v1.0 est obsolète.
 
 **Adaptations v2.0 documentées dans `liturgical-scheme.md` :**
 
@@ -1355,7 +1497,22 @@ Ce document est la **source de vérité unique** pour les Étapes 1 (Rule Parsin
 - FeastID : u16 (vs u32/18 bits en v1.0) — Scope sur bits [15:14], Category sur bits [13:12], Sequence sur bits [11:0]
 - Support des dates mobiles via `mobile.anchor` + `mobile.offset`
 - Hiérarchie de scopes étendue : `universal → national → diocesan`
-- Commémorations alimentées par le Secondary Pool (Étape 3), pas directement par le YAML
+- Commémorations alimentées par le Secondary Pool (Étape 6), pas directement par le YAML
+
+**Adaptations v2.0.2 (scheme v1.2) :**
+
+- `slug` supprimé du corps YAML — déduit du stem du nom de fichier (`path.file_stem()`)
+- `format_version` remplacé par `version` — rupture de schéma sans compatibilité ascendante
+- Bloc `transfers` introduit pour la résolution déclarative des collisions (Passe 3, Étape 4)
+- Groupe E de validations (V-T1, V-T2, V-T3) — erreurs Étape 1
+
+**Adaptations v2.0.4 (scheme v1.3) :**
+
+- **Zéro String dans le YAML** — le corpus YAML est un graphe de données pur ; `title` et tout champ textuel sont supprimés
+- **Dictionnaires i18n externes** — arborescence `i18n/{lang}/{slug}.yaml` ; clé composite implicite `{slug}.{from}.{field}`
+- **Latin comme langue source obligatoire** — fallback AOT résolu en Étape 1bis ; le `.lits` produit est autonome par langue
+- **Groupe F de validations (V-I1, V-I2)** — corrélation YAML ↔ dictionnaires, appliquée en Étape 1bis
+- **Format `.lits` revu** — year-aware (`Entry Table` indexée par `(FeastID, from, to)`) ; `LitsProvider::get(feast_id, year)` en O(log N + K)
 
 ---
 
@@ -1381,10 +1538,14 @@ Ce document est la **source de vérité unique** pour les Étapes 1 (Rule Parsin
 | Philosophie Fast/Slow Path             | Architecture     | Remplacée par AOT-Only                           |
 | Plage algorithmique 1583–4099          | Architecture     | Remplacée par plage AOT 1969–2399                |
 | Sentinelle `0xFFFFFFFF`                | Contrat binaire  | Remplacée par `primary_id = 0` (Padding Entry)   |
+| `slug` (champ YAML)                    | Schéma YAML      | Supprimé v2.0.2 — déduit du stem du nom de fichier (§2.1 scheme) |
+| `format_version` (champ YAML)          | Schéma YAML      | Supprimé v2.0.2 — remplacé par `version`                         |
+| `title` (champ `history[]` YAML)       | Schéma YAML      | Supprimé v2.0.4 — externalisé dans `i18n/{lang}/{slug}.yaml`     |
+| `StringProvider` (API v2.0 initiale)   | Engine/Forge     | Remplacé v2.0.4 par `LitsProvider` year-aware (§9)               |
 
 ### Éléments conservés intégralement
 
-- Format `.lits` et `StringProvider` (endianness LE canonique)
+- Format `.lits` (endianness LE canonique) — structure révisée en v2.0.4 (year-aware)
 - `FeastRegistry` (BTreeMap, Forge)
 - Structure YAML et système de slugs/scopes/history
 - Validations V1–V6 (adaptations mineures : V3 capacité 4095, V4 plage `[1969, 2399]`)
@@ -1407,9 +1568,15 @@ Ce document est la **source de vérité unique** pour les Étapes 1 (Rule Parsin
 | Format binaire entry | `DayPacked` u32 (4 octets)               | **`CalendarEntry`** 8 octets                                    |
 | Commémorations       | N/A (v1.0 one-primary only)              | **Secondary Pool** (`secondary_index` + `secondary_count`)      |
 | Plage couverte       | Algorithmique : 1583–4099                | **AOT uniquement : 1969–2399**                                  |
+| Clé d'identité YAML  | Champ `slug` dans le corps YAML          | **Stem du nom de fichier** (`path.file_stem()`) — v2.0.2        |
+| Version schéma YAML  | `format_version: 1`                      | **`version: 1`** — v2.0.2 — rupture sans compatibilité          |
+| Gestion collisions   | Code impératif Étape 3                   | **Bloc `transfers` déclaratif** (scheme §2.4) — v2.0.2          |
+| Résolution intra-slot | if/else sur Precedence + FeastID tiebreaker | **`ResolutionKey` tri canonique** (`sort_unstable_by_key`) — v2.0.3 |
+| Labels textuels       | Champ `title` dans `history[]` YAML + `StringProvider(FeastID)` | **Dictionnaires i18n externes** + `LitsProvider::get(FeastID, year)` year-aware — v2.0.4 |
+| Pipeline Forge        | 5 étapes                                   | **6 étapes** (Étape 1bis : i18n Resolution) — v2.0.4               |
 
 ---
 
 **Fin de la Spécification Technique v2.0 — Ready for Implementation**
 
-_Document révisé le 2026-04-05. Architecture AOT-Only : Engine (`liturgical-calendar-core`) projecteur de mémoire O(1), 4 fonctions FFI, `no_std`/`no_alloc`. Forge (`liturgical-calendar-forge`) compilateur de droit liturgique, pipeline en 5 étapes. Format binaire `.kald` v2.0 : Header 64 octets, `CalendarEntry` 8 octets, Secondary Pool. Convention DOY 0-based. Plage 1969–2399 (431 ans). Contrat de données amont : `liturgical-scheme.md` v1.0._
+_Document révisé le 2026-04-09 (v2.0.4). Architecture AOT-Only : Engine (`liturgical-calendar-core`) projecteur de mémoire O(1), 4 fonctions FFI, `no_std`/`no_alloc`. Forge (`liturgical-calendar-forge`) compilateur AOT, pipeline en 6 étapes. Format binaire `.kald` v2.0 : Header 64 octets, `CalendarEntry` 8 octets, Secondary Pool. Format `.lits` year-aware : Header 32 octets, Entry Table `(FeastID, from, to, str_offset)`, String Pool UTF-8. Convention DOY 0-based. Plage 1969–2399 (431 ans). Modifications v2.0.2 : slug déduit du stem, `version` remplace `format_version`, bloc `transfers`, V-T1–V-T3. Modifications v2.0.3 : `ResolutionKey` tri canonique. Modifications v2.0.4 : zéro String YAML, dictionnaires i18n, Étape 1bis, `LitsProvider` year-aware, V-I1–V-I2. Contrat de données amont : `liturgical-scheme.md` v1.3._
