@@ -1,0 +1,11 @@
+version: 1
+
+history:
+  - from: 1969
+    title: "SS.mi Corporis et Sanguinis Christi"
+    precedence: 3
+    nature: sollemnitas
+    color: albus
+    mobile:
+      type: easter_offset
+      offset: 60

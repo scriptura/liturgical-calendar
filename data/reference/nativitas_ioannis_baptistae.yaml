@@ -1,0 +1,20 @@
+version: 1
+
+history:
+  - from: 1969
+    title: "In Nativitate S. Ioannis Baptistae"
+    precedence: 3
+    nature: sollemnitas
+    color: albus
+    date:
+      month: 6
+      day: 24
+
+    transfers:
+      - collides: sacratissimi_cordis_iesu
+        offset: -1
+
+      - collides: corpus_christi
+        date:
+          month: 6
+          day: 25

@@ -1,0 +1,11 @@
+version: 1
+
+history:
+  - from: 1969
+    title: "In Nativitate Domini"
+    precedence: 2
+    nature: sollemnitas
+    color: albus
+    date:
+      month: 12
+      day: 25

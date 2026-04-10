@@ -1,0 +1,11 @@
+version: 1
+
+history:
+  - from: 1969
+    title: "In Epiphania Domini"
+    precedence: 2
+    nature: sollemnitas
+    color: albus
+    date:
+      month: 1
+      day: 6

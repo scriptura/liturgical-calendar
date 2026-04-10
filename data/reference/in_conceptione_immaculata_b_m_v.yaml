@@ -1,0 +1,11 @@
+version: 1
+
+history:
+  - from: 1969
+    title: "In Conceptione Immaculata B. M. V."
+    precedence: 3
+    nature: sollemnitas
+    color: albus
+    date:
+      month: 12
+      day: 8
