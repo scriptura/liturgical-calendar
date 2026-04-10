@@ -1,0 +1,12 @@
+version: 1
+category: 0
+mobile:
+  anchor: pascha
+  offset: -3
+history:
+  - from: 1969
+    to: ~
+    precedence: 3
+    nature: feria
+    color: albus
+    season: tempus_quadragesimae

@@ -1,0 +1,12 @@
+version: 1
+category: 0
+mobile:
+  anchor: pascha
+  offset: +69
+history:
+  - from: 1969
+    to: ~
+    precedence: 11
+    nature: memoria
+    color: albus
+    season: tempus_ordinarium

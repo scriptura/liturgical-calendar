@@ -2,7 +2,6 @@
 
 **Date :** 9 Avril 2026
 **Statut :** Validé et Verrouillé
-**Auteurs :** Architecte Principal & IA (Gemini)
 
 ## 1. Contexte et Problématique
 

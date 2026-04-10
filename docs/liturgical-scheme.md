@@ -2,9 +2,9 @@
 
 **Statut** : Canonique / Source de Vérité YAML  
 **Scope** : `liturgical-calendar-forge` — Étapes 1 (Rule Parsing) et 2 (Canonicalization)  
-**Référence** : `specification.md` v2.0  
-**Date de Révision** : 2026-04-09 — GELÉ  
-**Version** : 1.3.1 ❄️
+**Référence** : `specification.md` v2.2  
+**Date de Révision** : 2026-04-10 — GELÉ  
+**Version** : 1.3.3 ❄️
 
 ---
 
@@ -157,7 +157,8 @@ feasts:
       day: <1–31>
     mobile: # Fête à date MOBILE — voir §3.2
       anchor: <anchor_id>
-      offset: <integer> # Peut être négatif (ex: -7 pour le dimanche avant Pâques)
+      offset: <integer> # Jours (signé). Interdit si anchor = tempus_ordinarium.
+      ordinal: <1–34> # Index ordinal de semaine. Exclusif à anchor: tempus_ordinarium.
 
     # Transferts déclaratifs — optionnel — voir §2.4
     transfers:
@@ -387,13 +388,54 @@ mobile:
 
 **Ancres disponibles :**
 
-| `anchor_id`   | Définition canonique        | Résolution par la Forge                           |
-| ------------- | --------------------------- | ------------------------------------------------- |
-| `pascha`      | Dimanche de Pâques          | Meeus/Jones/Butcher (Étape 2)                     |
-| `adventus`    | Premier dimanche de l'Avent | Dimanche le plus proche du 30 novembre (Étape 2)  |
-| `pentecostes` | Pentecôte                   | `pascha + 49` (dérivée, non déclarée directement) |
+| `anchor_id`         | Champ requis | Définition canonique                        | Résolution par la Forge                            |
+| ------------------- | ------------ | ------------------------------------------- | -------------------------------------------------- |
+| `pascha`            | `offset`     | Dimanche de Pâques                          | Meeus/Jones/Butcher (Étape 2)                      |
+| `adventus`          | `offset`     | Premier dimanche de l'Avent                 | Dimanche le plus proche du 30 novembre (Étape 2)   |
+| `pentecostes`       | `offset`     | Pentecôte                                   | `pascha + 49` (dérivée, non déclarée directement)  |
+| `nativitas`         | `offset`     | Dimanche dans l'Octave de Noël              | Voir règle de canonicalization ci-dessous — v1.3.2 |
+| `epiphania`         | `offset`     | Premier dimanche après l'Épiphanie (6 jan.) | Voir règle de canonicalization ci-dessous — v1.3.2 |
+| `tempus_ordinarium` | `ordinal`    | N-ième dimanche du Temps Ordinaire          | Voir règle de canonicalization ci-dessous — v1.3.3 |
+
+**Contraintes de champ selon l'ancre — Validation V4a (v1.3.3) :**
+
+| Ancre               | `offset` | `ordinal` | Règle                                                                                |
+| ------------------- | -------- | --------- | ------------------------------------------------------------------------------------ |
+| toute ancre sauf TO | requis   | interdit  | `ParseError::OrdinalOnNonOrdinalAnchor { slug, anchor }`                             |
+| `tempus_ordinarium` | interdit | requis    | `ParseError::OffsetOnOrdinalAnchor { slug }` / `ParseError::MissingOrdinal { slug }` |
+
+`ordinal` ∈ [1, 34] — violation → `ParseError::OrdinalOutOfRange { slug, ordinal }`.
 
 > **Note :** `pentecostes` est une ancre de convenance. Elle est strictement équivalente à `anchor: pascha, offset: +49`. Les deux formes sont admises et produisent le même DOY.
+
+**Règles de résolution des ancres `nativitas` et `epiphania` (v1.3.2) :**
+
+`anchor: nativitas` — DOY du dimanche tombant dans la plage [Dec 26, Dec 31] (incluses). Si le 25 décembre est lui-même un dimanche (aucun dimanche ne tombe dans la plage [Dec 26, Dec 31] de cette année), la Forge assigne le DOY correspondant au **30 décembre** (règle canonique NALC — non arbitraire). L'offset s'applique additivement sur le DOY résultant.
+
+```
+fn resolve_nativitas(year: u16) -> u16 {
+    let christmas_doy = doy_from_date(12, 25); // toujours 359 (année non-bissextile)
+    let christmas_weekday = weekday(year, christmas_doy); // 0=Sun … 6=Sat
+    if christmas_weekday == 0 {
+        return doy_from_date(12, 30); // fallback canonique NALC
+    }
+    // Prochain dimanche après le 25 déc., dans [Dec 26, Dec 31]
+    christmas_doy + (7 - christmas_weekday) as u16
+}
+```
+
+`anchor: epiphania` — DOY du **premier dimanche strictement postérieur** au 6 janvier. Plage de résolution garantie : [Jan 7, Jan 13] (DOY [6, 12] en base 0). L'offset s'applique additivement sur le DOY résultant.
+
+```
+fn resolve_epiphania(year: u16) -> u16 {
+    let epiphania_doy = doy_from_date(1, 6); // toujours 5 (base 0)
+    let epiphania_weekday = weekday(year, epiphania_doy); // 0=Sun … 6=Sat
+    let days_to_next_sunday = if epiphania_weekday == 0 { 7 } else { 7 - epiphania_weekday };
+    epiphania_doy + days_to_next_sunday as u16
+}
+```
+
+> Ces deux ancres sont **acycliques par construction** — elles ne dépendent d'aucune autre fête mobile. Elles sont résolues en O(1) avant le graphe de dépendances de Pâques.
 
 **Fêtes mobiles standard dérivées de Pâques :**
 
@@ -409,10 +451,57 @@ mobile:
 | Dominica in Palmis       | `pascha` | -7     |
 | Feria IV Cinerum         | `pascha` | -46    |
 
+**Fêtes mobiles standard dérivées des nouvelles ancres :**
+
+| Fête                                 | Ancre       | Offset |
+| ------------------------------------ | ----------- | ------ |
+| Sancta Familia Iesu Mariae et Ioseph | `nativitas` | 0      |
+| In Baptismate Domini                 | `epiphania` | 0      |
+
+**Fêtes mobiles dérivées de `tempus_ordinarium` (v1.3.3) :**
+
+| Slug                            | Ancre               | Ordinal | DOY typique           |
+| ------------------------------- | ------------------- | ------- | --------------------- |
+| `dominica_x_temporis_ordinarii` | `tempus_ordinarium` | 10      | variable selon Pâques |
+| … (idem pour ordinaux 1–34)     |                     |         |                       |
+
+**Règle de résolution de l'ancre `tempus_ordinarium` (v1.3.3) :**
+
+Le Temps Ordinaire est compté **à rebours** depuis le dernier dimanche (XXXIV = Christ-Roi = `adventus - 7`). L'algorithme est O(1) avec `adventus` comme seule dépendance.
+
+```
+DOY(tempus_ordinarium, ordinal) = DOY(adventus) − 7 × (35 − ordinal)
+```
+
+Exemples :
+
+- Ordinal 34 (Christ-Roi) : `adventus − 7`
+- Ordinal 33 : `adventus − 14`
+- Ordinal 1 : `adventus − 7 × 34 = adventus − 238`
+
+**Comportement si le DOY calculé tombe dans le Temps de Noël ou de Pâques :**
+
+La Forge retourne `Ok(None)` pour ce slot — la fête est absente du dataset pour cette année. Ce comportement est **correct et attendu** : certains dimanches du début du Temps Ordinaire sont absorbés par le Temps de Noël (ordinal 1–5 certaines années) ou les premiers dimanches après l'Épiphanie. Ce n'est pas une erreur. L'Engine reçoit une Padding Entry (`primary_id = 0`) et l'interprétation est laissée à l'appelant.
+
+**Exemple complet — 10ème dimanche du Temps Ordinaire :**
+
+```yaml
+version: 1
+category: 0
+mobile:
+  anchor: tempus_ordinarium
+  ordinal: 10
+history:
+  - from: 1969
+    to: ~
+    precedence: 7
+    nature: feria
+    color: viridis
+```
+
 **Exemple complet — Ascension :**
 
 ```yaml
-# data/universale/temporale/ascensio_domini.yaml
 version: 1
 category: 0
 mobile:
@@ -429,9 +518,11 @@ history:
 
 **Validation V4 — Cycles et dépendances :**
 
-Chaque ancre déclarée doit être résolvable sans cycle. La Forge construit un graphe de dépendances de toutes les dates mobiles avant de les calculer. Un cycle (ex: une fête dont l'offset référencerait une autre fête mobile) est rejeté avec `ParseError::CircularDependency { slug, anchor }`.
+Chaque ancre déclarée doit être résolvable sans cycle. La Forge construit un graphe de dépendances de toutes les dates mobiles avant de les calculer. Un cycle est rejeté avec `ParseError::CircularDependency { slug, anchor }`.
 
-Dans la version actuelle, seules les ancres de la table ci-dessus sont admises. Les ancres personnalisées (référençant d'autres fêtes par slug) ne sont **pas** supportées en v1.0.
+**V4a (v1.3.3) — Contrainte de champ :** `offset` et `ordinal` sont mutuellement exclusifs selon l'ancre (voir table ci-dessus). Toute violation est rejetée avant désérialisation du bloc `history`.
+
+Dans la version actuelle, seules les ancres de la table ci-dessus sont admises (`pascha`, `adventus`, `pentecostes`, `nativitas`, `epiphania`, `tempus_ordinarium`). Les ancres personnalisées (référençant d'autres fêtes par slug) ne sont **pas** supportées en v1.0.
 
 ---
 
@@ -1234,6 +1325,6 @@ Avant de soumettre un fichier YAML à la Forge :
 
 ---
 
-**Fin du Contrat de Données Amont v1.3.1 — ❄️ GELÉ**
+**Fin du Contrat de Données Amont v1.3.3 — ❄️ GELÉ**
 
-_Document créé le 2026-03-07. Révisé le 2026-04-09 (v1.3.1 — GELÉ). Modifications v1.2 : slug/version/transfers/Groupe E. Modifications v1.3 : zéro String YAML, dictionnaires i18n, Groupe F (V-I1, V-I2), §4.4, §9.5. Corrections v1.3.1 (contrat gelé) : V-T4 (offset uint strictement positif) ; V3a étendue aux dates de transfert ; exemple `offset` corrigé. Référence : `specification.md` v2.0.5._
+_Document créé le 2026-03-07. Révisé le 2026-04-09 (v1.3.1). Révisé le 2026-04-10 (v1.3.2 : ancres `nativitas`, `epiphania`). Révisé le 2026-04-10 (v1.3.3 — GELÉ) : ancre `tempus_ordinarium`, champ `ordinal` exclusif, validation V4a, règle de résolution O(1) via `adventus`, comportement `Ok(None)` pour slots absorbés. Référence : `specification.md` v2.2._

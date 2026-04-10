@@ -1,11 +1,12 @@
 version: 1
-
+category: 0
+mobile:
+  anchor: pascha
+  offset: +3
 history:
   - from: 1969
-    title: "Dominica Resurrectionis"
+    to: ~
     precedence: 1
     nature: sollemnitas
     color: albus
-    mobile:
-      type: easter_offset
-      offset: 0
+    season: tempus_paschale
