@@ -11,10 +11,11 @@ Cette list se veut exaustive (Solennités, Fêtes, Mémoires obligatoires et Dim
   - `dominica_iii_adventus.yaml`
   - `dominica_iv_adventus.yaml`
   - `in_nativitate_domini.yaml`
-  - `sanctae_familiae.yaml`
-  - `mariae_matris_dei.yaml`
-  - `epiphania_domini.yaml`
+  - `sancta_familiae_iesu_mariae_et_ioseph.yaml`
+  - `sanctae_dei_genetricis_mariae.yaml`
+  - `in_epiphania_domini.yaml`
   - `in_baptismate_domini.yaml`
+
 - **Carême/Pâques**
   - `feria_iv_cinerum.yaml`
   - `dominica_i_quadragesimae.yaml`
@@ -22,259 +23,277 @@ Cette list se veut exaustive (Solennités, Fêtes, Mémoires obligatoires et Dim
   - `dominica_iii_quadragesimae.yaml`
   - `dominica_iv_quadragesimae.yaml`
   - `dominica_v_quadragesimae.yaml`
-  - `dominica_in_palmis.yaml`
+  - `dominica_in_palmis_de_passione_domini.yaml`
   - `feria_v_in_cena_domini.yaml`
   - `feria_vi_in_passione_domini.yaml`
   - `sabbato_sancto.yaml`
   - `dominica_resurrectionis.yaml`
-  - `infra_octavam_paschae_ii.yaml`
-  - `infra_octavam_paschae_iii.yaml`
-  - `infra_octavam_paschae_iv.yaml`
-  - `infra_octavam_paschae_v.yaml`
-  - `infra_octavam_paschae_vi.yaml`
-  - `infra_octavam_paschae_vii.yaml`
+  - `feria_ii_infra_octavam_paschae.yaml`
+  - `feria_iii_infra_octavam_paschae.yaml`
+  - `feria_iv_infra_octavam_paschae.yaml`
+  - `feria_v_infra_octavam_paschae.yaml`
+  - `feria_vi_infra_octavam_paschae.yaml`
+  - `sabbato_infra_octavam_paschae.yaml`
   - `dominica_ii_paschae.yaml`
   - `dominica_iii_paschae.yaml`
   - `dominica_iv_paschae.yaml`
   - `dominica_v_paschae.yaml`
   - `dominica_vi_paschae.yaml`
-  - `ascensio_domini.yaml`
+  - `in_ascensione_domini.yaml`
   - `dominica_vii_paschae.yaml`
   - `dominica_pentecostes.yaml`
-  - `mariae_matris_ecclesiae.yaml`
+  - `beatae_mariae_virginis_ecclesiae_matris.yaml`
+
 - **Temps Ordinaire (Mobilité Structurale)**
   - `sanctissimae_trinitatis.yaml`
-  - `corpus_christi.yaml`
+  - `sanctissimi_corporis_et_sanguinis_christi.yaml`
   - `sacratissimi_cordis_iesu.yaml`
-  - `immaculati_cordis_mariae.yaml`
-  - `iesu_christi_universorum_regis.yaml`
-  - `dominica_ordinaria_01.yaml` (jusqu'à `34.yaml`)
+  - `immaculati_cordis_beatae_mariae_virginis.yaml`
+  - `domini_nostro_iesu_christi_regis_universi.yaml`
+  - `dominica_x_temporis_ordinarii.yaml` (jusqu'à `34.yaml`)
 
 ### 2. Sanctorale
 
 - **Janvier**
   - `basilii_magni_et_gregorii_nazianzeni.yaml`
-  - `sanctissimi_nominis_iesu.yaml`
+  - `sanctissimi_nominis_iesu.yaml` # 2002 (creation)
   - `raimundi_de_penyafort.yaml`
-  - `hilarii_pictaviensis.yaml`
-  - `antonii_abbatis.yaml`
-  - `fabiani_papae.yaml`
-  - `sebastiani_martyris.yaml`
-  - `agnetis_virginis.yaml`
-  - `vincentii_diaconi.yaml`
+  - `hilarii.yaml`
+  - `antonii.yaml`
+  - `fabiani.yaml`
+  - `sebastiani.yaml`
+  - `agnetis.yaml`
+  - `vincentii.yaml`
   - `francisci_de_sales.yaml`
-  - `conversio_pauli_apostoli.yaml`
-  - `timothei_et_titi_episcoporum.yaml`
+  - `in_conversione_pauli.yaml`
+  - `timothei_et_titi.yaml`
   - `angelae_merici.yaml`
-  - `thomae_aquinatis.yaml`
+  - `thomae_de_aquino.yaml`
   - `ioannis_bosco.yaml`
+
 - **Février**
-  - `praesentatio_domini.yaml`
-  - `blasii_episcopi.yaml`
-  - `ansgarii_episcopi.yaml`
-  - `agathae_virginis.yaml`
+  - `in_praesentatione_domini.yaml`
+  - `blasii.yaml`
+  - `ansgarii.yaml`
+  - `agathae.yaml`
   - `pauli_miki_et_sociorum.yaml`
-  - `iosephinae_bakhita.yaml`
+  - `iosephinae_bakhita.yaml` # 2000 (creation)
   - `hieronymi_emiliani.yaml`
-  - `scholasticae_virginis.yaml`
-  - `mariae_de_lourdes.yaml`
-  - `cyrilli_et_methodii.yaml`
-  - `septem_sanctorum_fundatorum.yaml`
+  - `scholasticae.yaml`
+  - `beatae_mariae_virginis_de_lourdes.yaml`
+  - `cyrilli_et_methodii.yaml` # 1980 (revision)
+  - `septem_foundatorum_ordinis_servorum.yaml`
   - `petri_damiani.yaml`
   - `cathedra_petri_apostoli.yaml`
-  - `polycarpi_episcopi.yaml`
-  - `gregorii_narecensis.yaml`
+  - `polycarpi.yaml`
+  - `gregorii_narecensis.yaml` # 2021 (creation)
+
 - **Mars**
   - `casimiri.yaml`
   - `perpetuae_et_felicitatis.yaml`
-  - `ioannis_de_deo.yaml`
+  - `ioannis_a_deo.yaml`
   - `franciscae_romanae.yaml`
-  - `patricii_episcopi.yaml`
+  - `patricii.yaml`
   - `cyrilli_hierosolymitani.yaml`
-  - `ioseph_sponsi_b_m_v.yaml`
+  - `iosephi_sponsi_beatae_mariae_virginis.yaml`
   - `turibii_de_mongrovejo.yaml`
-  - `annuntiatio_domini.yaml`
+  - `in_annuntiatione_domini.yaml`
+
 - **Avril**
   - `isidori.yaml`
   - `francisci_de_paula.yaml`
   - `vincentii_ferrer.yaml`
   - `ioannis_baptistae_de_la_salle.yaml`
-  - `stanislai_episcopi.yaml`
-  - `anselmi_episcopi.yaml`
-  - `martini_i_papae.yaml`
-  - `georgii_martyris.yaml`
-  - `adalberti_episcopi.yaml`
+  - `stanislai.yaml`
+  - `anselmi.yaml`
+  - `martini_i.yaml`
+  - `georgii.yaml`
+  - `adalberti.yaml`
   - `fidelis_de_sigmaringen.yaml`
-  - `marci_evangelistae.yaml`
+  - `marci.yaml`
   - `petri_chanel.yaml`
-  - `ludovici_mariae_grignion_de_montfort.yaml`
-  - `catharinae_senensis.yaml`
-  - `pii_v_papae.yaml`
+  - `ludovici_mariae_grignion_de_montfort.yaml` # 1996 (creation)
+  - `catharinae_senensis.yaml` # 1970 (doctor)
+  - `pii_v.yaml`
+
 - **Mai**
-  - `ioseph_opificis.yaml`
-  - `athanasii_episcopi.yaml`
-  - `philippi_et_iacobi_apostolorum.yaml`
-  - `pancratii_martyris.yaml`
-  - `ioannis_de_avila.yaml`
+  - `iosephi_opificis.yaml`
+  - `athanasii.yaml`
+  - `philippi_et_iacobi.yaml`
+  - `pancratii.yaml`
+  - `ioannis_de_avila.yaml` # 2021 (creation)
   - `nereii_et_achillei.yaml`
-  - `beatae_mariae_virginis_de_fatima.yaml`
-  - `matthiae_apostoli.yaml`
-  - `ioannis_i_papae.yaml`
+  - `beatae_mariae_virginis_de_fatima.yaml` # 2002 (creation)
+  - `matthiae.yaml`
+  - `ioannis_i.yaml`
   - `bernardini_senensis.yaml`
-  - `christophori_magallanes_et_sociorum.yaml`
+  - `christophori_magallanes_et_sociorum.yaml` # 2000 (creation)
   - `ritae_de_cassia.yaml`
   - `bedae_venerabilis.yaml`
-  - `gregorii_vii_papae.yaml`
+  - `gregorii_vii.yaml`
   - `mariae_magdalenae_de_pazzi.yaml`
   - `philippi_neri.yaml`
   - `augustini_cantuariensis.yaml`
-  - `pauli_vi_papae.yaml`
-  - `visitatio_b_m_v.yaml`
+  - `pauli_vi.yaml` # 2019 (creation)
+  - `in_visitatione_beatae_mariae_virginis.yaml`
+
 - **Juin**
-  - `iustini_martyris.yaml`
+  - `iustini.yaml`
   - `marcellini_et_petri.yaml`
   - `caroli_lwanga_et_sociorum.yaml`
-  - `bonifatii_episcopi.yaml`
-  - `norberti_episcopi.yaml`
-  - `ephraem_diaconi.yaml`
-  - `barnabae_apostoli.yaml`
+  - `bonifatii.yaml`
+  - `norberti.yaml`
+  - `ephraem.yaml`
+  - `barnabae.yaml`
   - `antonii_de_padua.yaml`
-  - `romualdi_abbatis.yaml`
+  - `romualdi.yaml`
   - `aloisii_gonzaga.yaml`
   - `paulini_nolani.yaml`
   - `ioannis_fisher_et_thomae_more.yaml`
-  - `nativitas_ioannis_baptistae.yaml`
+  - `in_nativitate_ioannis_baptistae.yaml`
   - `cyrilli_alexandrini.yaml`
-  - `irenaei_episcopi.yaml`
-  - `petri_et_pauli_apostolorum.yaml`
-  - `protomartyrum_s_romanae_ecclesiae.yaml`
+  - `irenaei.yaml` # 2022 (doctor)
+  - `petri_et_pauli.yaml`
+  - `protomartyrum_sanctae_romanae_ecclesiae.yaml`
 
 - **Juillet**
-  - `thomae_apostoli.yaml`
+  - `thomae.yaml`
   - `elizabeth_lusitaniae.yaml`
   - `antonii_mariae_zaccaria.yaml`
   - `mariae_goretti.yaml`
-  - `augustini_zhao_rong_et_sociorum.yaml`
-  - `benedicti_abbatis.yaml`
-  - `henrici_imperatoris.yaml`
+  - `augustini_zhao_rong_et_sociorum.yaml` # 2000 (creation)
+  - `benedicti.yaml`
+  - `henrici.yaml`
   - `camilli_de_lellis.yaml`
-  - `bonaventurae_episcopi.yaml`
+  - `bonaventurae.yaml`
   - `mariae_de_monte_carmelo.yaml`
-  - `apollinaris_episcopi.yaml`
+  - `apollinaris.yaml` # 2002 (creation)
   - `laurentii_de_brundisio.yaml`
-  - `mariae_magdalenae.yaml`
-  - `birgittae_viduae.yaml`
+  - `mariae_magdalenae.yaml` # 2016 (revison)
+  - `birgittae.yaml`
   - `sarbelii_makhluf.yaml`
-  - `iacobi_apostoli.yaml`
+  - `iacobi.yaml`
   - `ioachim_et_annae.yaml`
-  - `marthae_mariae_et_lazari.yaml`
+  - `marthae_mariae_et_lazari.yaml` # 2021 (revision)
   - `petri_chrysologi.yaml`
   - `ignatii_de_loyola.yaml`
+
 - **Août**
   - `alphonsi_mariae_de_liguorio.yaml`
   - `eusebii_vercellensis.yaml`
   - `petri_iuliani_eymard.yaml`
   - `ioannis_mariae_vianney.yaml`
-  - `dedicatio_basilicae_s_mariae.yaml`
-  - `transfiguratio_domini.yaml`
-  - `sixti_ii_papae_et_sociorum.yaml`
-  - `caietani_presbyteri.yaml`
-  - `dominici_presbyteri.yaml`
-  - `teresiae_benedictae_a_cruce.yaml`
-  - `laurentii_diaconi.yaml`
-  - `clarae_virginis.yaml`
+  - `in_dedicatione_basilicae_sanctae_mariae.yaml`
+  - `in_transfiguratione_domini.yaml`
+  - `xysti_ii_et_sociorum.yaml`
+  - `caietani.yaml`
+  - `dominici.yaml`
+  - `teresiae_benedictae_a_cruce.yaml` # 1998 (creation)
+  - `laurentii.yaml`
+  - `clarae.yaml`
   - `ioannae_franciscae_de_chantal.yaml`
   - `pontiani_et_hippolyti.yaml`
-  - `maximiliani_mariae_kolbe.yaml`
-  - `in_assumptione_b_m_v.yaml`
+  - `maximiliani_mariae_kolbe.yaml` # 1982 (creation)
+  - `in_assumptione_beatae_mariae_virginis.yaml`
   - `stephani_hungariae.yaml`
   - `ioannis_eudes.yaml`
-  - `bernardi_abbatis.yaml`
-  - `pii_x_papae.yaml`
-  - `mariae_reginae.yaml`
+  - `bernardi.yaml`
+  - `pii_x.yaml`
+  - `beatae_mariae_virginis_reginae.yaml`
   - `rosae_de_lima.yaml`
-  - `bartholomaei_apostoli.yaml`
-  - `ludovici_regis.yaml`
+  - `bartholomaei.yaml`
+  - `ludovici.yaml`
   - `iosephi_de_calasanz.yaml`
-  - `monicae_viduae.yaml`
-  - `augustini_episcopi.yaml`
-  - `passio_ioannis_baptistae.yaml`
+  - `monicae.yaml`
+  - `augustini.yaml`
+  - `in_passione_ioannis_baptistae.yaml`
+
 - **Septembre**
   - `gregorii_magni.yaml`
-  - `teresiae_de_calcutta.yaml` # 2017
-  - `nativitas_b_m_v.yaml`
+  - `teresiae_de_calcutta.yaml` # 2017 (creation)
+  - `in_nativitate_beatae_mariae_virginis.yaml`
   - `petri_claver.yaml`
-  - `nominis_mariae.yaml`
+  - `sanctissimi_nominis_mariae.yaml` # 2002 (creation)
   - `ioannis_chrysostomi.yaml`
-  - `exaltatio_sanctae_crucis.yaml`
-  - `mariae_perdolentis.yaml`
+  - `in_exaltatione_sanctae_crucis.yaml`
+  - `beatae_mariae_virginis_perdolentis.yaml`
   - `cornelii_et_cypriani.yaml`
   - `roberti_bellarmino.yaml`
-  - `hildegardis_bingensis.yaml`
-  - `ianuarii_episcopi.yaml`
+  - `hildegardis_bingensis.yaml` # 2021 (creation)
+  - `ianuarii.yaml`
   - `andreae_kim_taegon_et_sociorum.yaml`
-  - `matthaei_apostoli.yaml`
-  - `pii_de_pietrelcina.yaml`
+  - `matthaei.yaml`
+  - `pii_de_pietrelcina.yaml` # 2002 (creation)
   - `cosmae_et_damiani.yaml`
   - `vincentii_de_paul.yaml`
-  - `laurentii_ruiz_et_sociorum.yaml`
-  - `venceslai_martyris.yaml`
-  - `michaelis_gabrielis_raphaelis_archangelorum.yaml`
-  - `hieronymi_presbyteri.yaml`
+  - `laurentii_ruiz_et_sociorum.yaml` # 1987 (creation)
+  - `venceslai.yaml`
+  - `michaelis_gabrielis_raphaelis.yaml`
+  - `hieronymi.yaml`
+
 - **Octobre**
   - `teresiae_a_iesu_infante.yaml`
   - `angelorum_custodum.yaml`
   - `francisci_assisiensis.yaml`
-  - `faustinae_kowalska.yaml`
-  - `brunonis_presbyteri.yaml`
+  - `faustinae_mariae_kowalska.yaml` # 2020 (creation)
+  - `brunonis.yaml`
   - `mariae_a_rosario.yaml`
-  - `ioannis_xxiii_papae.yaml`
-  - `callisti_i_papae.yaml`
+  - `dionysii_et_sociorum.yaml`
+  - `ioannis_leonardi.yaml`
+  - `ioannis_xxiii.yaml` # 2014 (creation)
+  - `callisti_i.yaml`
   - `teresiae_a_iesu.yaml`
-  - `hedvigis_religiosae.yaml`
+  - `hedvigis.yaml`
   - `margaritae_mariae_alacoque.yaml`
   - `ignatii_antiocheni.yaml`
-  - `lucae_evangelistae.yaml`
-  - `ioannis_pauli_ii_papae.yaml` # 2011 (Inscriptio), 2014 ()
+  - `lucae.yaml`
+  - `ioannis_de_brebeuf_et_isaac_jogues_et_sociorum.yaml`
+  - `pauli_a_cruce.yaml`
+  - `ioannis_pauli_ii.yaml` # 2014 (creation)
   - `ioannis_de_capistrano.yaml`
   - `antonii_mariae_claret.yaml`
-  - `simonis_et_iudae_apostolorum.yaml`
+  - `simonis_et_iudae.yaml`
+
 - **Novembre**
   - `omnium_sanctorum.yaml`
-  - `omnium_fidelium_defunctorum.yaml`
+  - `in_commemoratione_omnium_fidelium_defunctorum.yaml`
   - `martini_de_porres.yaml`
   - `caroli_borromeo.yaml`
-  - `dedicatio_basilicae_lateranensis.yaml`
+  - `in_dedicatione_basilicae_lateranensis.yaml`
   - `leonis_magni.yaml`
   - `martini_turonensis.yaml`
-  - `iosaphat_episcopi.yaml`
+  - `iosaphat.yaml`
   - `alberti_magni.yaml`
   - `margaritae_scotiae.yaml`
-  - `gertrudis_virginis.yaml`
+  - `gertrudis.yaml`
   - `elizabeth_hungariae.yaml`
-  - `praesentatio_b_m_v.yaml`
-  - `caeciliae_virginis.yaml`
-  - `clementis_i_papae.yaml`
-  - `columbani_abbatis.yaml`
-  - `andreae_dung_lac_et_sociorum.yaml`
-  - `andreae_apostoli.yaml`
+  - `in_praesentatione_beatae_mariae_virginis.yaml`
+  - `caeciliae.yaml`
+  - `clementis_i.yaml`
+  - `columbani.yaml`
+  - `andreae_dung_lac_et_sociorum.yaml` # 1988 (creation)
+  - `catharianae_alexandrinae.yaml` # 2002 (creation)
+  - `andreae.yaml`
+  - `in_dedicatione_basilicarum_sanctorum_petri_et_pauli_apostolorum.yaml` # 2015 (creation)
+
 - **Décembre**
   - `francisci_xavier.yaml`
   - `ioannis_damasceni.yaml`
-  - `nicolai_episcopi.yaml`
-  - `ambrosii_episcopi.yaml`
-  - `in_conceptione_immaculata_b_m_v.yaml`
-  - `ioannis_diego_cuauhtlatoatzin.yaml`
-  - `beatae_mariae_virginis_de_loreto.yaml`
-  - `damasi_i_papae.yaml`
-  - `luciae_virginis.yaml`
+  - `nicolai.yaml`
+  - `ambrosii.yaml`
+  - `in_conceptione_immaculata_beatae_mariae_virginis.yaml`
+  - `ioannis_didaci_cuauhtlatoatzin.yaml` # 2002 (creation)
+  - `beatae_mariae_virginis_de_loreto.yaml` # 2019 (creation)
+  - `damasi_i.yaml`
+  - `beatae_mariae_virginis_de_guadalupe.yaml` # 2002 (creation)
+  - `luciae.yaml`
   - `ioannis_a_cruce.yaml`
   - `petri_canisii.yaml`
   - `ioannis_kanty.yaml`
-  - `stephani_protomartyris.yaml`
-  - `ioannis_apostoli.yaml`
+  - `stephani.yaml`
+  - `ioannis.yaml`
   - `innocentium_martyrum.yaml`
   - `thomae_becket.yaml`
-  - `silvestri_i_papae.yaml`
+  - `silvestri_i.yaml`
 
 Cette liste forme le `FeastRegistry` complet.
