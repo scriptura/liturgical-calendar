@@ -1,0 +1,11 @@
+version: 1
+category: 1
+date:
+  month: 9
+  day: 5
+history:
+  - from: 2017
+    to: ~
+    precedence: 11
+    nature: memoria
+    color: albus

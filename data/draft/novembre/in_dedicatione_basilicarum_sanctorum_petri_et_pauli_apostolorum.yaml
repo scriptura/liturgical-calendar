@@ -1,0 +1,11 @@
+version: 1
+category: 1
+date:
+  month: 11
+  day: 18
+history:
+  - from: 2015
+    to: ~
+    precedence: 12
+    nature: memoria
+    color: albus

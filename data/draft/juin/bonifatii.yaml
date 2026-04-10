@@ -1,0 +1,11 @@
+version: 1
+category: 1
+date:
+  month: 6
+  day: 5
+history:
+  - from: 1969
+    to: ~
+    precedence: 11
+    nature: memoria
+    color: rubeus

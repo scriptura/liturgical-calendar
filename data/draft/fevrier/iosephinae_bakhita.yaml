@@ -1,0 +1,11 @@
+version: 1
+category: 1
+date:
+  month: 2
+  day: 8
+history:
+  - from: 2000
+    to: ~
+    precedence: 11
+    nature: memoria
+    color: albus

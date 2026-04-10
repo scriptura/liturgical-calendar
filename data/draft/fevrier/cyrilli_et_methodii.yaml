@@ -1,0 +1,16 @@
+version: 1
+category: 1
+date:
+  month: 2
+  day: 14
+history:
+  - from: 1969
+    to: 1979
+    precedence: 11
+    nature: memoria
+    color: albus
+  - from: 1980
+    to: ~
+    precedence: 8
+    nature: festum
+    color: albus

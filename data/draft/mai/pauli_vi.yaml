@@ -1,0 +1,11 @@
+version: 1
+category: 1
+date:
+  month: 5
+  day: 29
+history:
+  - from: 2019
+    to: ~
+    precedence: 11
+    nature: memoria
+    color: albus

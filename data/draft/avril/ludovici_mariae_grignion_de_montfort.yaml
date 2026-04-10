@@ -1,0 +1,11 @@
+version: 1
+category: 1
+date:
+  month: 4
+  day: 28
+history:
+  - from: 1996
+    to: ~
+    precedence: 12
+    nature: memoria
+    color: albus
