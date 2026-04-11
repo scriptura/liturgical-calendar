@@ -1,15 +1,64 @@
-# Roadmap de Développement : Liturgical Calendar v2.0
+# Roadmap de Développement : Liturgical Calendar v2.2
 
-**Version** : 2.0.5 ❄️  
-**Date de Révision** : 2026-04-09 — GELÉ  
+**Version** : 2.2.0  
+**Date de Révision** : 2026-04-10  
 **Méthodologie** : 3 jalons, chacun produisant un livrable binaire validable indépendamment  
 **Critères de Succès** : Conformité binaire Forge↔Engine · SHA-256 cross-platform · Fuzzing · CI 4 cibles
 
 ---
 
+## État du Corpus (2026-04-10)
+
+### Historique des extensions d'ancres
+
+| Version contrat | Version spec | Date       | Extension                                      |
+| --------------- | ------------ | ---------- | ---------------------------------------------- |
+| v1.3.1          | v2.0         | 2026-04-09 | Base : `pascha`, `adventus`, `pentecostes`     |
+| v1.3.2          | v2.1         | 2026-04-10 | + `nativitas`, `epiphania`                     |
+| v1.3.3          | v2.2         | 2026-04-10 | + `tempus_ordinarium` (champ `ordinal`)        |
+
+### État du corpus YAML
+
+#### Sanctoral universel — ✅ COMPLET
+
+218 fichiers générés (janvier → décembre). Disponibles dans `outputs/sanctorale/`.
+
+#### Temporal — EN COURS
+
+| Lot                                       | État         | Fichiers                                              |
+| ----------------------------------------- | ------------ | ----------------------------------------------------- |
+| Dimanches de l'Avent (I–IV)               | ✅ Livré      | `dominica_i_adventus` … `dominica_iv_adventus`        |
+| Noël fixe                                 | ✅ Livré      | `in_nativitate_domini`, `sanctae_dei_genetricis_mariae`, `in_epiphania_domini` |
+| Cycle de Noël mobile                      | ✅ Livré      | `sancta_familiae_iesu_mariae_et_ioseph`, `in_baptismate_domini` |
+| Carême + Semaine Sainte                   | ⏳ À générer  |                                                       |
+| Octave pascale + Dimanches de Pâques      | ⏳ À générer  |                                                       |
+| Fêtes mobiles majeures (Trinité, Corpus…) | ⏳ À générer  |                                                       |
+| Dimanches du Temps Ordinaire (X–XXXIV)    | ⏳ À générer  | Ancre `tempus_ordinarium` + `ordinal` — déblocage v1.3.3 |
+| Christ-Roi + fin de cycle                 | ⏳ À générer  | `domini_nostro_iesu_christi_regis_universi`           |
+
+### Points ouverts
+
+| # | Sujet                                     | Statut                                          |
+| - | ----------------------------------------- | ----------------------------------------------- |
+| 1 | Slug `in_ascensione_domini` vs `ascensio_domini` | ⚠ En attente de confirmation définitive   |
+| 2 | Dimanches TO ordinals 1–9 (absorption)    | ✅ Résolu par architecture — Ok(None) Étape 3   |
+| 3 | `in_commemoratione_omnium_fidelium_defunctorum` : `nature: commemoratio` vs `sollemnitas` | ⚠ À confirmer |
+| 4 | `barnabae` : `memoria` vs `festum`        | ⚠ À confirmer contre source primaire            |
+| 5 | `irenaei` : élévation de rang 2022        | ⚠ À confirmer (festum ou memoria uniquement ?)  |
+| 6 | `iosephi_opificis` : obligatoire ou ad libitum | ⚠ À confirmer                             |
+
+### Décisions architecturales gelées
+
+- `transfers` interdit pour du calcul structurel — invariant permanent.
+- `ordinal` exclusif à `anchor: tempus_ordinarium` — validé V4a, rejet fatal si combinaison incorrecte.
+- Résolution `tempus_ordinarium` : O(1) via `DOY(adventus) − 7 × (35 − ordinal)`.
+- Slots ordinaires absorbés par Pâques/Noël : `Ok(None)` à l'Étape 3, suppression silencieuse à l'Étape 4 — jamais une erreur.
+
+---
+
 ## Philosophie de la Roadmap
 
-**Architecture :** deux crates dans un workspace Cargo. `liturgical-calendar-core` (`no_std`, `no_alloc`) est un projecteur de mémoire O(1) — 4 fonctions FFI, zéro logique de domaine. `liturgical-calendar-forge` (`std`) est le compilateur AOT qui produit les artefacts `.kald` consommés par l'Engine.
+**Architecture :** deux crates dans un workspace Cargo. `liturgical-calendar-core` (`no_std`, `no_alloc`) est un projecteur de mémoire O(1) — 4 fonctions FFI, zéro logique de domaine. `liturgical-calendar-forge` (`std`) est le compilateur AOT qui produit les artefacts `.kald` et `.lits` consommés par l'Engine.
 
 **Principe d'organisation :** chaque jalon produit un binaire ou ensemble de crates testables et validables en isolation. Aucune étape intermédiaire sans critère de sortie concret.
 
@@ -227,7 +276,7 @@ cargo build -p liturgical-calendar-core --features gen-headers
 
 ## Jalon 2 — The Compiler
 
-**Périmètre :** Pipeline Forge complet (5 étapes), production d'un `.kald` valide et vérifiable.
+**Périmètre :** Pipeline Forge complet (6 étapes), production d'un `.kald` et d'un `.lits` valides et vérifiables.
 
 **Critère de sortie :** La Forge produit un `.kald` valide pour l'année 2025. `kal_validate_header` retourne `KAL_ENGINE_OK`. `kal_read_entry` retourne des `CalendarEntry` cohérentes pour les 366 slots de 2025 (doy 0–365), dont la Padding Entry à `doy=59` (`primary_id=0`, 2025 non-bissextile) et la fête du 28 février (`doy=58`) correctement résolue.
 
@@ -266,6 +315,10 @@ Les enums `Nature`, `Color`, `LiturgicalPeriod` dans `registry.rs` (côté Forge
 Toute désignation `primary` / `secondary` dans un slot DOY passe **exclusivement** par un `sort_unstable_by_key(|f| f.resolution_key())`. Aucun `if/else` conditionnel sur `Precedence`, `Cycle` ou `Temporality` n'est autorisé dans `resolution.rs` en dehors de la garde V7 (Passe 2) et du déclassement saisonnier (§3.4 spec). Toute déviation constitue une violation architecturale — le déterminisme bit-for-bit du `.kald` en dépend.
 
 `ResolutionKey` est définie dans `liturgical-calendar-forge/src/resolution.rs`. Elle n'appartient pas au Core — l'Engine ne trie jamais, il lit.
+
+**INV-FORGE-ORDINAL — `ordinal` exclusif à `anchor: tempus_ordinarium`**
+
+Le champ `ordinal` est invalide sur toute ancre autre que `tempus_ordinarium`. Le champ `offset` est invalide sur `anchor: tempus_ordinarium`. Ces deux contraintes sont vérifiées par les validations V4a (spec §10) avant toute désérialisation du bloc `history`.
 
 ---
 
@@ -349,7 +402,8 @@ pub(crate) struct DictStore {
 - `is_leap_year(year: i32) -> bool`
 - `SeasonBoundaries::compute(year: i32) -> SeasonBoundaries` (DOY 0-based)
 - `doy_from_month_day(month: u8, day: u8) -> u16` via table `MONTH_STARTS`
-- Résolution des dates flottantes (Ascension = Pâques + 39, Pentecôte = Pâques + 49, etc.)
+- Résolution des ancres dans l'ordre v2.2 : `nativitas` → `epiphania` → `adventus` → `tempus_ordinarium` → `pascha` → `pentecostes`
+- `resolve_tempus_ordinarium(adventus_doy: u16, ordinal: u8) -> u16` — O(1), dépend uniquement de `adventus_doy`
 
 **Tests :**
 
@@ -357,6 +411,11 @@ pub(crate) struct DictStore {
 - Pâques 2000 : 23 avril → `doy = 113`
 - Année bissextile 2024 : `is_leap_year(2024) == true`, `is_leap_year(2025) == false`
 - `MONTH_STARTS[0] == 0`, `MONTH_STARTS[2] == 60` (mars après padding)
+- `tempus_ordinarium` ordinal 34, Avent 2025 (DOY 333) : `333 - 7*(35-34) = 326` ✅
+- `tempus_ordinarium` ordinal 1, Avent 2025 (DOY 333) : `333 - 7*34 = 95` → absorbé (Ok(None)) ✅
+- V4a : `anchor: tempus_ordinarium` + `offset` présent → `ParseError::OffsetOnOrdinalAnchor`
+- V4a : `anchor: tempus_ordinarium` + `ordinal` absent → `ParseError::MissingOrdinal`
+- V4a : `anchor: pascha` + `ordinal` présent → `ParseError::OrdinalOnNonOrdinalAnchor`
 
 ---
 
@@ -385,7 +444,7 @@ pub(crate) enum Temporality { Fixed = 0, Mobile = 1 }
 
 **Pipeline (5 passes — spec §3.3) :**
 
-- **Passe 1** : Placement de toutes les fêtes (fixes et mobiles) dans `BTreeMap<u16 (doy), Vec<PlacedFeast>>`. Aucun conflit résolu.
+- **Passe 1** : Placement de toutes les fêtes (fixes et mobiles) dans `BTreeMap<u16 (doy), Vec<PlacedFeast>>`. Aucun conflit résolu. Les slots `tempus_ordinarium` absorbés produisent `Ok(None)` — pas d'entrée dans la table.
 - **Passe 2** : Garde V7 + résolution de scope. Pour chaque slot multi-fêtes : appliquer la hiérarchie `diocesan > national > universal` (§3.1) puis détecter `SolemnityCollision` (Precedence ≤ 3 tout scope, Precedence ∈ [4,5] même scope) — fatal avant tout tri.
 - **Passe 3** : Tri Canonique + Élection + Déclassement (§3.4 spec) + Dispatch Transferts. Appliquer `sort_unstable_by_key(|f| f.resolution_key())` sur chaque slot. `slot[0]` = primary. Partition de `slot[1..]` en secondary_feasts, to_transfer, suppressed. Consulter bloc `transfers` pour chaque fête to_transfer.
 - **Passe 4** : `TransferQueue` — BTreeSet déterministe, transferts strictement vers l'avant, profondeur bornée à 7.
@@ -401,6 +460,7 @@ Sortie : `ResolvedCalendar` — table indexée `(year, doy) → ResolvedDay { pr
 - Passe 3 — `transfers` avec `offset` : fête déplacée atterrit au bon DOY calculé.
 - Passe 3 — `transfers` avec `date` : fête déplacée atterrit à la date fixe.
 - Passe 4 — profondeur : chaîne de 8 jours consécutifs bloquants → `ForgeError::TransferFailed`.
+- Absorption `tempus_ordinarium` : ordinal 1, année 2025 → slot non inséré dans la table (Ok(None)), aucun transfert tenté.
 
 ---
 
@@ -513,6 +573,7 @@ fn conformity_2025() {
 - Vérification Padding Entries : années non-bissextiles → `kal_read_entry(year, 59).primary_id == 0`
 - Vérification années bissextiles : `kal_read_entry(year, 59).primary_id != 0` (slot réel, pas padding)
 - Déterminisme : deux exécutions Forge → SHA-256 identique bit-for-bit
+- Vérification corpus Temporal complet : tous les dimanches du Temps Ordinaire (ordinals 10–34) présents pour chaque année où non absorbés
 
 **Années bissextiles dans la plage 1969–2399 :**
 Toutes les années divisibles par 4 sauf séculaires non-centenaires (2100, 2200, 2300 sont non-bissextiles). 2000 et 2400 sont bissextiles (mais 2400 hors plage). À valider dans les tests.
@@ -677,6 +738,6 @@ Serveur HTTP léger wrappant les 4 fonctions FFI de l'Engine. Endpoints : `GET /
 
 ---
 
-**Fin de la Roadmap v2.0 — ❄️ GELÉ**
+**Fin de la Roadmap v2.2**
 
-_Révisée le 2026-04-09 (v2.0.5 — GELÉ). Trois jalons : Binary Foundation, The Compiler, Sanctification. Engine (`liturgical-calendar-core`) : 4 fonctions FFI, `no_std`/`no_alloc`, projecteur de mémoire O(1). Forge (`liturgical-calendar-forge`) : compilateur AOT, pipeline en 6 étapes, logique liturgique complète. Format binaire `.kald` v2.0 : Header 64 octets, `CalendarEntry` 8 octets, Secondary Pool. Format `.lits` year-aware : Header 32 octets, Entry Table `(FeastID, from, to, str_offset)`, String Pool UTF-8. Convention DOY 0-based. Plage 1969–2399 (431 ans). Modifications v2.0.2–v2.0.4 : slug/version/transfers/ResolutionKey/i18n/LitsProvider. Corrections v2.0.5 (contrat gelé) : desugaring `pentecostes`, V12, V-T4, V3a étendue. Référence : `specification.md` v2.0.5, `liturgical-scheme.md` v1.3.1._
+_Révisée le 2026-04-10 (v2.2.0). Trois jalons : Binary Foundation, The Compiler, Sanctification. Engine (`liturgical-calendar-core`) : 4 fonctions FFI, `no_std`/`no_alloc`, projecteur de mémoire O(1). Forge (`liturgical-calendar-forge`) : compilateur AOT, pipeline en 6 étapes, logique liturgique complète. Format binaire `.kald` v2.0 : Header 64 octets, `CalendarEntry` 8 octets, Secondary Pool. Format `.lits` year-aware : Header 32 octets, Entry Table `(FeastID, from, to, str_offset)`, String Pool UTF-8. Convention DOY 0-based. Plage 1969–2399 (431 ans). Modifications v2.0.2–v2.0.4 : slug/version/transfers/ResolutionKey/i18n/LitsProvider. Corrections v2.0.5 : desugaring `pentecostes`, V12, V-T4, V3a étendue. Modifications v2.1 : ancres `nativitas`, `epiphania`. Modifications v2.2 : ancre `tempus_ordinarium` + `ordinal`, V4a, ordre de résolution des ancres, INV-FORGE-ORDINAL, état du corpus (sanctoral complet, temporal en cours). Référence : `specification.md` v2.2.0, `liturgical-scheme.md` v1.3.3._

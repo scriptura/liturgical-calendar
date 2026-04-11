@@ -1,12 +1,12 @@
-# Spécification Technique : Liturgical Calendar v2.0
+# Spécification Technique : Liturgical Calendar v2.2
 
 **Statut** : Canonique / Ready for Implementation  
 **Architecture** : AOT-Only / DOD / FFI-First  
 **Workspace** : `liturgical-calendar-forge` (std) / `liturgical-calendar-core` (no_std, no_alloc)  
 **Langage Domaine** : Latin (Strictement Canonique)  
 **Déterminisme** : Bit-for-bit reproductible  
-**Date de Révision** : 2026-04-09 — GELÉ  
-**Version** : 2.0.5 ❄️
+**Date de Révision** : 2026-04-10  
+**Version** : 2.2.0
 
 ---
 
@@ -610,6 +610,77 @@ Le résultat est un `LabelTable` plat : `BTreeMap<(FeastID, u16 from, Lang), Str
 - Calcul des DOY 0-based via `MONTH_STARTS` pour toutes les dates fixes et mobiles
 - Détermination du caractère bissextile (années ≡ 0 mod 400, ou ≡ 0 mod 4 et ≢ 0 mod 100)
 
+#### Ordre de résolution des ancres (v2.2)
+
+Les ancres sont résolues dans l'ordre suivant, garantissant l'absence de cycle et la disponibilité des dépendances :
+
+```
+1. nativitas          — O(1), indépendante
+2. epiphania          — O(1), indépendante
+3. adventus           — O(1), indépendante
+4. tempus_ordinarium  — O(1), dépend de adventus (déjà résolu en 3)
+5. pascha             — Meeus/Jones/Butcher
+6. pentecostes        — dérivée : pascha + 49
+```
+
+`tempus_ordinarium` dépend uniquement de `adventus` (étape 3), déjà résolu quand elle est calculée. Acyclique par construction.
+
+#### anchor: tempus_ordinarium (v2.2)
+
+**Sémantique du champ `ordinal`** : index ordinal de la semaine dans le Temps Ordinaire, de 1 (premier dimanche) à 34 (Christ-Roi). Le champ `offset` est **absent** pour cette ancre — sa présence est une erreur fatale V4a.
+
+**Algorithme de résolution (O(1)) :**
+
+Le comptage est ancré sur le dernier dimanche du Temps Ordinaire (XXXIV = Christ-Roi), lui-même défini comme `adventus - 7`. Tous les dimanches ordinaires sont calculés par soustraction homogène :
+
+```
+DOY(tempus_ordinarium, ordinal) = DOY(adventus) − 7 × (35 − ordinal)
+```
+
+**Pseudo-code de référence :**
+
+```rust
+fn resolve_tempus_ordinarium(adventus_doy: u16, ordinal: u8) -> u16 {
+    // ordinal ∈ [1, 34] — validé en V4a avant appel
+    // adventus_doy déjà résolu (étape 3)
+    let offset_from_adventus: u16 = 7 * (35 - ordinal as u16);
+    adventus_doy.saturating_sub(offset_from_adventus)
+    // saturating_sub : protection contre underflow théorique (impossible si ordinal ∈ [1,34]
+    // et adventus ∈ [DOY 300, DOY 335])
+}
+```
+
+**Vérification : table de correspondance pour 2025**
+(Avent 2025 = 30 novembre = DOY 333)
+
+| Ordinal | DOY calculé | Date grégorienne | Correct ? |
+| ------- | ----------- | ---------------- | --------- |
+| 34      | 333 − 7     = 326 | 23 nov 2025 | ✅ Christ-Roi |
+| 33      | 333 − 14    = 319 | 16 nov 2025 | ✅         |
+| 10      | 333 − 175   = 158 | 8 juin 2025 | ✅         |
+| 1       | 333 − 238   = 95  | 6 avr 2025  | ⚠ absorbé (Pâques 2025 = 20 avr, TO commence après Pentecôte 8 juin) → Ok(None) |
+
+**Comportement pour les slots absorbés :**
+
+La Forge calcule le DOY sans condition. Elle ne décide pas si le dimanche ordinaire est « actif » : cette responsabilité appartient à l'**Étape 4 (Conflict Resolution)**. L'Étape 4 constate qu'un slug de Temps de Pâques ou de Noël occupe déjà ce DOY avec une `Precedence` ≤ 2, et supprime le dimanche ordinaire du dataset pour cette année.
+
+La Forge retourne `Ok(None)` pour le slot ordinaire — ce n'est pas une erreur. L'Engine reçoit une Padding Entry (`primary_id = 0`).
+
+**Invariant** : la Forge ne conditionne jamais la résolution d'un DOY à une logique saisonnière. La saison est un attribut calculé, pas un filtre de résolution.
+
+**Fêtes enregistrées utilisant tempus_ordinarium (corpus universale) :**
+
+| Slug                                    | Ordinal | DOY typique (2025) |
+| --------------------------------------- | ------- | ------------------ |
+| `dominica_x_temporis_ordinarii`         | 10      | 158 (8 juin)       |
+| `dominica_xi_temporis_ordinarii`        | 11      | 165 (15 juin)      |
+| … (ordinals 10–34 actifs typiquement)   |         |                    |
+| `dominica_xxxiv_temporis_ordinarii`     | 34      | 326 (23 nov)       |
+
+> Les ordinals 1–9 peuvent être partiellement ou totalement absorbés selon l'année (Pâques tardives). La Forge génère tous les slugs ; l'Étape 4 élimine les slots en conflit.
+
+---
+
 **Validation croisée de Pâques :**
 
 L'algorithme est seul juge du calcul. Une table de référence partielle (années limites + cas connus) est vérifiée à l'exécution pour détecter toute régression de conversion DOY :
@@ -906,7 +977,7 @@ La nature "Commémoraison" est implicite par la position dans le Secondary Pool 
 
 **Invariant de déclassement :** la Forge ne modifie jamais le FeastID d'une fête déclassée. Le FeastID est une clé stable d'identité. Seule sa position dans le slot (primary vs secondary) encode son statut ce jour-là.
 
-**Détection en Étape 3 :**
+**Détection en Étape 4 :**
 
 ```rust
 fn should_demote_to_commemoratio(feast: &Feast, period: LiturgicalPeriod) -> bool {
@@ -931,7 +1002,7 @@ Si `should_demote_to_commemoratio` est vrai, la fête est ajoutée à `secondary
 
 **INV-FORGE-4 — Ordre du Secondary Pool : tri par FeastID croissant :**
 
-L'ordre des FeastIDs dans chaque entrée du Secondary Pool est lexicographique sur les `u16` — tri numérique croissant, indépendant des slugs, de la locale système et de l'ordre de résolution de l'Étape 3. Le `sort_unstable()` dans `PoolBuilder::insert` est le seul mécanisme d'ordre admis. Aucune autre clé de tri (slug, date, Precedence) n'est acceptable — le binaire produit doit être identique sur toutes les machines de build.
+L'ordre des FeastIDs dans chaque entrée du Secondary Pool est lexicographique sur les `u16` — tri numérique croissant, indépendant des slugs, de la locale système et de l'ordre de résolution de l'Étape 4. Le `sort_unstable()` dans `PoolBuilder::insert` est le seul mécanisme d'ordre admis. Aucune autre clé de tri (slug, date, Precedence) n'est acceptable — le binaire produit doit être identique sur toutes les machines de build.
 
 **Construction du Secondary Pool — déduplication avec tri canonique et vérification de capacité :**
 
@@ -966,7 +1037,7 @@ impl PoolBuilder {
 }
 ```
 
-Le tri des FeastIDs avant insertion définit l'ordre des commémorations dans le `.kald` comme lexicographique sur les FeastIDs — indépendant de l'ordre de résolution en Étape 3 et donc déterministe.
+Le tri des FeastIDs avant insertion définit l'ordre des commémorations dans le `.kald` comme lexicographique sur les FeastIDs — indépendant de l'ordre de résolution en Étape 4 et donc déterministe.
 
 La déduplication réduit la taille du pool en exploitant la répétition des combinaisons de commémorations entre années. L'impact cache est neutre pour l'Engine (accès aléatoire au pool) mais réduit la taille totale du fichier `.kald`.
 
@@ -1002,7 +1073,7 @@ Les `flags` encodent le **statut résolu au moment de la compilation**, pas le s
 │  history[].color      : Albus                                       │
 │  date: { month: 1, day: 28 }                                        │
 └────────────────────────┬────────────────────────────────────────────┘
-                         │ Étape 3 — Conflict Resolution
+                         │ Étape 4 — Conflict Resolution
                          │ La Forge évalue le contexte du slot (year, doy)
                          │
          ┌───────────────┼───────────────────────┐
@@ -1385,9 +1456,9 @@ Cette vérification est de la responsabilité du **client** (`std`), pas de l'En
 
 ---
 
-## 10. Validations Forge (V1–V6) et Erreurs de Résolution (V7–V10)
+## 10. Validations Forge (V1–V6) et Erreurs de Résolution (V7–V12)
 
-Les validations V1–V6 et V-T1–V-T3 sont appliquées lors de l'**Étape 1 (Rule Parsing)**. Les validations V-I1–V-I2 sont appliquées lors de l'**Étape 1bis (i18n Resolution)**. Les erreurs V7–V8 sont levées lors de l'**Étape 4 (Conflict Resolution)**. Les erreurs V9–V10 sont levées lors de l'**Étape 6 (Binary Packing)**. Un seul échec, à n'importe quelle étape, interrompt la compilation. Les codes V1–V10, V-T1–V-T3 et V-I1–V-I2 sont les identifiants canoniques dans les variants `RegistryError` / `ParseError` / `ForgeError` Rust.
+Les validations V1–V6 et V-T1–V-T3 sont appliquées lors de l'**Étape 1 (Rule Parsing)**. Les validations V-I1–V-I2 sont appliquées lors de l'**Étape 1bis (i18n Resolution)**. Les erreurs V7–V8 sont levées lors de l'**Étape 4 (Conflict Resolution)**. Les erreurs V9–V10 sont levées lors de l'**Étape 6 (Binary Packing)**. Un seul échec, à n'importe quelle étape, interrompt la compilation. Les codes V1–V12, V-T1–V-T4 et V-I1–V-I2 sont les identifiants canoniques dans les variants `RegistryError` / `ParseError` / `ForgeError` Rust.
 
 La définition exhaustive de chaque validation (conditions formelles, hints d'erreur) est dans **`liturgical-scheme.md` §8**. Ce tableau est la clé de correspondance entre les deux documents.
 
@@ -1422,6 +1493,17 @@ La définition exhaustive de chaque validation (conditions formelles, hints d'er
 | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | -------------------------------- |
 | `ParseError::I18nMissingLatinKey { slug, from, field }`          | Clé `{slug}.{from}.{field}` absente du dictionnaire `i18n/la/`                           | **Groupe F — V-I1**              |
 | `ParseError::I18nOrphanKey { slug, lang, from, field }`          | Clé dictionnaire dont l'année `from` est absente du `history[]` YAML correspondant       | **Groupe F — V-I2**              |
+
+**Validations Étape 3 — Contrainte offset/ordinal (V4a, v2.2) :**
+
+Ces validations sont appliquées **avant** la désérialisation du bloc `history` — erreur fatale, aucune sortie partielle.
+
+| Condition                                          | Erreur fatale                                          |
+| -------------------------------------------------- | ------------------------------------------------------ |
+| `anchor: tempus_ordinarium` + `offset` présent     | `ParseError::OffsetOnOrdinalAnchor { slug }`           |
+| `anchor: tempus_ordinarium` + `ordinal` absent     | `ParseError::MissingOrdinal { slug }`                  |
+| `anchor: tempus_ordinarium` + `ordinal` ∉ [1, 34]  | `ParseError::OrdinalOutOfRange { slug, ordinal }`      |
+| `anchor: <autre>` + `ordinal` présent              | `ParseError::OrdinalOnNonOrdinalAnchor { slug, anchor }`|
 
 **Erreurs Étape 4 (Conflict Resolution) :**
 
@@ -1526,6 +1608,20 @@ Ce document est la **source de vérité unique** pour les Étapes 1 et 1bis du p
 - **Groupe F de validations (V-I1, V-I2)** — corrélation YAML ↔ dictionnaires, appliquée en Étape 1bis
 - **Format `.lits` revu** — year-aware (`Entry Table` indexée par `(FeastID, from, to)`) ; `LitsProvider::get(feast_id, year)` en O(log N + K)
 
+**Adaptations v2.1 (scheme v1.3.2) :**
+
+- Ancres `nativitas` et `epiphania` ajoutées — O(1), indépendantes, résolution avant `adventus`
+- Contrat de données amont : `liturgical-scheme.md` v1.3.2
+
+**Adaptations v2.2 (scheme v1.3.3) :**
+
+- Ancre `tempus_ordinarium` avec champ `ordinal` exclusif — O(1), dépend de `adventus`
+- Validations V4a : contraintes `offset`/`ordinal` pour `anchor: tempus_ordinarium`
+- Résolution `tempus_ordinarium` : O(1) via `DOY(adventus) − 7 × (35 − ordinal)`
+- Invariant : `ordinal` exclusif à `anchor: tempus_ordinarium` — rejet fatal si combinaison incorrecte
+- Décisions architecturales gelées : `transfers` interdit pour du calcul structurel
+- Contrat de données amont : `liturgical-scheme.md` v1.3.3
+
 ---
 
 ## Annexe B : Note de Migration v1.0 → v2.0
@@ -1586,9 +1682,10 @@ Ce document est la **source de vérité unique** pour les Étapes 1 et 1bis du p
 | Résolution intra-slot | if/else sur Precedence + FeastID tiebreaker | **`ResolutionKey` tri canonique** (`sort_unstable_by_key`) — v2.0.3 |
 | Labels textuels       | Champ `title` dans `history[]` YAML + `StringProvider(FeastID)` | **Dictionnaires i18n externes** + `LitsProvider::get(FeastID, year)` year-aware — v2.0.4 |
 | Pipeline Forge        | 5 étapes                                   | **6 étapes** (Étape 1bis : i18n Resolution) — v2.0.4               |
+| Résolution TO         | N/A                                        | **`anchor: tempus_ordinarium` + `ordinal`** O(1) — v2.2            |
 
 ---
 
-**Fin de la Spécification Technique v2.0 — ❄️ GELÉ**
+**Fin de la Spécification Technique v2.2**
 
-_Document révisé le 2026-04-09 (v2.0.5 — GELÉ). Architecture AOT-Only : Engine (`liturgical-calendar-core`) projecteur de mémoire O(1), 4 fonctions FFI, `no_std`/`no_alloc`. Forge (`liturgical-calendar-forge`) compilateur AOT, pipeline en 6 étapes. Format binaire `.kald` v2.0 : Header 64 octets, `CalendarEntry` 8 octets, Secondary Pool. Format `.lits` year-aware : Header 32 octets, Entry Table `(FeastID, from, to, str_offset)`, String Pool UTF-8. Convention DOY 0-based. Plage 1969–2399 (431 ans). Modifications v2.0.2 : slug/version/transfers/V-T1–V-T3. Modifications v2.0.3 : `ResolutionKey`. Modifications v2.0.4 : zéro String YAML, dictionnaires i18n, Étape 1bis, `LitsProvider`, V-I1–V-I2. Corrections v2.0.5 (contrat gelé) : desugaring `pentecostes` (Étape 1) ; V12 `SecondaryCountOverflow` ; V-T1–V-T4 (offset uint > 0) ; V3a étendue aux dates de transfert. Contrat de données amont : `liturgical-scheme.md` v1.3.1._
+_Document révisé le 2026-04-10 (v2.2.0). Architecture AOT-Only : Engine (`liturgical-calendar-core`) projecteur de mémoire O(1), 4 fonctions FFI, `no_std`/`no_alloc`. Forge (`liturgical-calendar-forge`) compilateur AOT, pipeline en 6 étapes. Format binaire `.kald` v2.0 : Header 64 octets, `CalendarEntry` 8 octets, Secondary Pool. Format `.lits` year-aware : Header 32 octets, Entry Table `(FeastID, from, to, str_offset)`, String Pool UTF-8. Convention DOY 0-based. Plage 1969–2399 (431 ans). Modifications v2.0.2 : slug/version/transfers/V-T1–V-T3. Modifications v2.0.3 : `ResolutionKey`. Modifications v2.0.4 : zéro String YAML, dictionnaires i18n, Étape 1bis, `LitsProvider`, V-I1–V-I2. Corrections v2.0.5 : desugaring `pentecostes` (Étape 1) ; V12 `SecondaryCountOverflow` ; V-T1–V-T4 ; V3a étendue aux dates de transfert. Modifications v2.1 : ancres `nativitas`, `epiphania`. Modifications v2.2 : ancre `tempus_ordinarium` + champ `ordinal`, ordre de résolution des ancres, validations V4a (`OffsetOnOrdinalAnchor`, `MissingOrdinal`, `OrdinalOutOfRange`, `OrdinalOnNonOrdinalAnchor`). Contrat de données amont : `liturgical-scheme.md` v1.3.3._
