@@ -6,7 +6,7 @@
 **Langage Domaine** : Latin (Strictement Canonique)  
 **Déterminisme** : Bit-for-bit reproductible  
 **Date de Révision** : 2026-04-10  
-**Version** : 2.2.0
+**Version** : 2.2.1
 
 ---
 
@@ -1486,6 +1486,7 @@ La définition exhaustive de chaque validation (conditions formelles, hints d'er
 | `ParseError::TransferEmpty { slug, collides }`                   | Entrée `transfers` sans `offset` ni `date`                                                                                                           | **Groupe E — V-T1**              |
 | `ParseError::UnknownCollidesTarget { slug, collides }`           | Slug déclaré dans `collides` absent du `FeastRegistry` au terme de l'Étape 1                                                                         | **Groupe E — V-T2**              |
 | `ParseError::TransferDuplicateCollides { slug, collides }`       | Deux entrées `transfers` référencent le même concurrent                                                                                              | **Groupe E — V-T3**              |
+| `ParseError::InvalidMemoriaPrecedence { slug, from, found_precedence }` | `nature: memoria` avec `precedence ∉ {11, 12}` — incohérence entre axe typologique et axe ordinal. `precedence` est **obligatoire** dans tout bloc `history[]` où `nature: memoria` est présent — une valeur par défaut implicite constitue une incohérence silencieuse. | **Groupe D — V-Natura-Memoria** |
 
 **Validations Étape 1bis (i18n Resolution) :**
 
@@ -1580,112 +1581,10 @@ kald-inspect <fichier.kald> [--year <année>] [--doy <doy>] [--dump-pool]
 
 ## Annexe A : FeastRegistry et Format YAML
 
-Le format YAML de saisie des fêtes liturgiques, la logique de versionnement (`history[]`), les champs `from`/`to`, la hiérarchie de scopes (universel / national / diocésain), les règles de nommage des slugs (dérivés du stem du nom de fichier), la structure des dictionnaires i18n et les algorithmes de résolution temporelle sont définis exhaustivement dans le document **`liturgical-scheme.md` v1.3** — Contrat de Données Amont.
-
-Ce document est la **source de vérité unique** pour les Étapes 1 et 1bis du pipeline Forge. Toute référence à l'Annexe B.11 de la spécification v1.0 est obsolète.
-
-**Adaptations v2.0 documentées dans `liturgical-scheme.md` :**
-
-- Champs `valid_from`/`valid_to` (v1.0) renommés en `from`/`to`
-- Plage temporelle admise : `[1969, 2399]` (validation V3b)
-- FeastID : u16 (vs u32/18 bits en v1.0) — Scope sur bits [15:14], Category sur bits [13:12], Sequence sur bits [11:0]
-- Support des dates mobiles via `mobile.anchor` + `mobile.offset`
-- Hiérarchie de scopes étendue : `universal → national → diocesan`
-- Commémorations alimentées par le Secondary Pool (Étape 6), pas directement par le YAML
-
-**Adaptations v2.0.2 (scheme v1.2) :**
-
-- `slug` supprimé du corps YAML — déduit du stem du nom de fichier (`path.file_stem()`)
-- `format_version` remplacé par `version` — rupture de schéma sans compatibilité ascendante
-- Bloc `transfers` introduit pour la résolution déclarative des collisions (Passe 3, Étape 4)
-- Groupe E de validations (V-T1, V-T2, V-T3) — erreurs Étape 1
-
-**Adaptations v2.0.4 (scheme v1.3) :**
-
-- **Zéro String dans le YAML** — le corpus YAML est un graphe de données pur ; `title` et tout champ textuel sont supprimés
-- **Dictionnaires i18n externes** — arborescence `i18n/{lang}/{slug}.yaml` ; clé composite implicite `{slug}.{from}.{field}`
-- **Latin comme langue source obligatoire** — fallback AOT résolu en Étape 1bis ; le `.lits` produit est autonome par langue
-- **Groupe F de validations (V-I1, V-I2)** — corrélation YAML ↔ dictionnaires, appliquée en Étape 1bis
-- **Format `.lits` revu** — year-aware (`Entry Table` indexée par `(FeastID, from, to)`) ; `LitsProvider::get(feast_id, year)` en O(log N + K)
-
-**Adaptations v2.1 (scheme v1.3.2) :**
-
-- Ancres `nativitas` et `epiphania` ajoutées — O(1), indépendantes, résolution avant `adventus`
-- Contrat de données amont : `liturgical-scheme.md` v1.3.2
-
-**Adaptations v2.2 (scheme v1.3.3) :**
-
-- Ancre `tempus_ordinarium` avec champ `ordinal` exclusif — O(1), dépend de `adventus`
-- Validations V4a : contraintes `offset`/`ordinal` pour `anchor: tempus_ordinarium`
-- Résolution `tempus_ordinarium` : O(1) via `DOY(adventus) − 7 × (35 − ordinal)`
-- Invariant : `ordinal` exclusif à `anchor: tempus_ordinarium` — rejet fatal si combinaison incorrecte
-- Décisions architecturales gelées : `transfers` interdit pour du calcul structurel
-- Contrat de données amont : `liturgical-scheme.md` v1.3.3
+Le format YAML de saisie des fêtes liturgiques, la logique de versionnement (`history[]`), les champs `from`/`to`, la hiérarchie de scopes (universel / national / diocésain), les règles de nommage des slugs (dérivés du stem du nom de fichier), la structure des dictionnaires i18n et les algorithmes de résolution temporelle sont définis exhaustivement dans le document **`liturgical-scheme.md`** — Contrat de Données Amont. Ce document est la **source de vérité unique** pour les Étapes 1 et 1bis du pipeline Forge.
 
 ---
 
-## Annexe B : Note de Migration v1.0 → v2.0
+**Fin de la Spécification Technique v2.2.1**
 
-### Éléments supprimés
-
-| Élément                                | Emplacement v1.0 | Note                                             |
-| -------------------------------------- | ---------------- | ------------------------------------------------ |
-| `SlowPath`                             | Engine           | Remplacé par la Forge                            |
-| `compute_easter`                       | Engine           | Migré dans la Forge (Étape 2)                    |
-| `SeasonBoundaries::compute`            | Engine           | Migré dans la Forge (Étape 2)                    |
-| `TemporalLayer`, `SanctoralLayer`      | Engine           | Absorbés dans la Forge (Étape 3)                 |
-| `FeastDefinitionPacked` (`NonZeroU32`) | Engine           | N/A en architecture AOT-Only                     |
-| `OnceLock<SlowPath>`                   | Engine           | Supprimé avec SlowPath                           |
-| `kal_compute_day`                      | API FFI          | Supprimé — l'Engine ne calcule plus              |
-| `kal_read_day`                         | API FFI          | Remplacé par `kal_read_entry`                    |
-| `kal_index_day`                        | API FFI          | Logique internalisée dans `kal_read_entry`       |
-| `kal_scan_precedence`                  | API FFI          | Remplacé par `kal_scan_flags` (masque générique) |
-| `day_of_year_to_month_day`             | Engine           | Migré dans la Forge si nécessaire                |
-| `DayPacked` (u32 bitfield)             | Format binaire   | Remplacé par `CalendarEntry` + `flags` u16       |
-| `CorruptionInfo`                       | Engine           | Sans objet — l'Engine ne reconstruit plus de Day |
-| Philosophie Fast/Slow Path             | Architecture     | Remplacée par AOT-Only                           |
-| Plage algorithmique 1583–4099          | Architecture     | Remplacée par plage AOT 1969–2399                |
-| Sentinelle `0xFFFFFFFF`                | Contrat binaire  | Remplacée par `primary_id = 0` (Padding Entry)   |
-| `slug` (champ YAML)                    | Schéma YAML      | Supprimé v2.0.2 — déduit du stem du nom de fichier (§2.1 scheme) |
-| `format_version` (champ YAML)          | Schéma YAML      | Supprimé v2.0.2 — remplacé par `version`                         |
-| `title` (champ `history[]` YAML)       | Schéma YAML      | Supprimé v2.0.4 — externalisé dans `i18n/{lang}/{slug}.yaml`     |
-| `StringProvider` (API v2.0 initiale)   | Engine/Forge     | Remplacé v2.0.4 par `LitsProvider` year-aware (§9)               |
-
-### Éléments conservés intégralement
-
-- Format `.lits` (endianness LE canonique) — structure révisée en v2.0.4 (year-aware)
-- `FeastRegistry` (BTreeMap, Forge)
-- Structure YAML et système de slugs/scopes/history
-- Validations V1–V6 (adaptations mineures : V3 capacité 4095, V4 plage `[1969, 2399]`)
-- Types `Precedence`, `Nature`, `LiturgicalPeriod` — valeurs numériques inchangées
-- Type `Color` — valeurs 0–5 inchangées, largeur étendue à 4 bits dans `flags`
-- Conventions FFI : préfixe `kal_*`, ABI `extern "C"`, codes `KAL_ERR_*`
-- Invariants INV-W1 à INV-W5
-- Politique Little-Endian canonique sur tout champ numérique
-- `kald-inspect`
-- Déterminisme bit-for-bit et SHA-256 cross-platform
-
-### Changements de convention
-
-| Aspect               | v1.0                                     | v2.0                                                            |
-| -------------------- | ---------------------------------------- | --------------------------------------------------------------- |
-| Convention DOY       | 1-based (`doy ∈ [1, 366]`)               | **0-based** (`doy ∈ [0, 365]`)                                  |
-| Padding Entry        | Sentinelle `0xFFFFFFFF` dans `DayPacked` | `primary_id = 0` dans `CalendarEntry`                           |
-| FeastID width        | 18 bits dans `DayPacked`                 | **u16** dans `CalendarEntry.primary_id`                         |
-| Header size          | 16 octets                                | **64 octets** (+ SHA-256 32 octets, `pool_offset`, `pool_size`) |
-| Format binaire entry | `DayPacked` u32 (4 octets)               | **`CalendarEntry`** 8 octets                                    |
-| Commémorations       | N/A (v1.0 one-primary only)              | **Secondary Pool** (`secondary_index` + `secondary_count`)      |
-| Plage couverte       | Algorithmique : 1583–4099                | **AOT uniquement : 1969–2399**                                  |
-| Clé d'identité YAML  | Champ `slug` dans le corps YAML          | **Stem du nom de fichier** (`path.file_stem()`) — v2.0.2        |
-| Version schéma YAML  | `format_version: 1`                      | **`version: 1`** — v2.0.2 — rupture sans compatibilité          |
-| Gestion collisions   | Code impératif Étape 3                   | **Bloc `transfers` déclaratif** (scheme §2.4) — v2.0.2          |
-| Résolution intra-slot | if/else sur Precedence + FeastID tiebreaker | **`ResolutionKey` tri canonique** (`sort_unstable_by_key`) — v2.0.3 |
-| Labels textuels       | Champ `title` dans `history[]` YAML + `StringProvider(FeastID)` | **Dictionnaires i18n externes** + `LitsProvider::get(FeastID, year)` year-aware — v2.0.4 |
-| Pipeline Forge        | 5 étapes                                   | **6 étapes** (Étape 1bis : i18n Resolution) — v2.0.4               |
-| Résolution TO         | N/A                                        | **`anchor: tempus_ordinarium` + `ordinal`** O(1) — v2.2            |
-
----
-
-**Fin de la Spécification Technique v2.2**
-
-_Document révisé le 2026-04-10 (v2.2.0). Architecture AOT-Only : Engine (`liturgical-calendar-core`) projecteur de mémoire O(1), 4 fonctions FFI, `no_std`/`no_alloc`. Forge (`liturgical-calendar-forge`) compilateur AOT, pipeline en 6 étapes. Format binaire `.kald` v2.0 : Header 64 octets, `CalendarEntry` 8 octets, Secondary Pool. Format `.lits` year-aware : Header 32 octets, Entry Table `(FeastID, from, to, str_offset)`, String Pool UTF-8. Convention DOY 0-based. Plage 1969–2399 (431 ans). Modifications v2.0.2 : slug/version/transfers/V-T1–V-T3. Modifications v2.0.3 : `ResolutionKey`. Modifications v2.0.4 : zéro String YAML, dictionnaires i18n, Étape 1bis, `LitsProvider`, V-I1–V-I2. Corrections v2.0.5 : desugaring `pentecostes` (Étape 1) ; V12 `SecondaryCountOverflow` ; V-T1–V-T4 ; V3a étendue aux dates de transfert. Modifications v2.1 : ancres `nativitas`, `epiphania`. Modifications v2.2 : ancre `tempus_ordinarium` + champ `ordinal`, ordre de résolution des ancres, validations V4a (`OffsetOnOrdinalAnchor`, `MissingOrdinal`, `OrdinalOutOfRange`, `OrdinalOnNonOrdinalAnchor`). Contrat de données amont : `liturgical-scheme.md` v1.3.3._
+_Architecture AOT-Only. Engine (`liturgical-calendar-core`) : projecteur de mémoire O(1), 4 fonctions FFI, `no_std`/`no_alloc`. Forge (`liturgical-calendar-forge`) : compilateur AOT, pipeline 6 étapes. Plage 1969–2399 (431 ans). Contrat de données amont : `liturgical-scheme.md`._

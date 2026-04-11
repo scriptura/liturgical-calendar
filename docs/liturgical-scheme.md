@@ -2,9 +2,9 @@
 
 **Statut** : Canonique / Source de Vérité YAML  
 **Scope** : `liturgical-calendar-forge` — Étapes 1 (Rule Parsing) et 2 (Canonicalization)  
-**Référence** : `specification.md` v2.2  
-**Date de Révision** : 2026-04-10 — GELÉ  
-**Version** : 1.3.3 ❄️
+**Référence** : `specification.md` v2.2.1  
+**Date de Révision** : 2026-04-10  
+**Version** : 1.3.4
 
 ---
 
@@ -827,7 +827,7 @@ Valeurs YAML (insensibles à la casse, normalisées par la Forge) et leur corres
 | -------------- | ---------------------- | ---------------- | ---------------------------------------------------------- |
 | `sollemnitas`  | `Nature::Sollemnitas`  | 0                |                                                            |
 | `festum`       | `Nature::Festum`       | 1                |                                                            |
-| `memoria`      | `Nature::Memoria`      | 2                | Couvre Beatus/Beata — "beatus" n'est pas une Nature        |
+| `memoria`      | `Nature::Memoria`      | 2                | Couvre obligatoire (precedence=11) et ad libitum (precedence=12). `precedence` obligatoire. Voir V-Natura-Memoria. |
 | `feria`        | `Nature::Feria`        | 3                | Inclut les Dominicae (classe de Precedence, pas de Nature) |
 | `commemoratio` | `Nature::Commemoratio` | 4                |                                                            |
 
@@ -1009,6 +1009,29 @@ Violation → `ParseError::UnknownAnchor { slug, anchor }`, `ParseError::Circula
 
 Violation → `RegistryError::UnknownNatureString(String)` avec hint si valeur canonique informelle détectée.
 
+**V-Natura-Memoria — Cohérence nature/precedence pour les mémoires**
+
+```
+∀ entrée e ∈ history :
+  e.nature == "memoria"  ⟹  e.precedence ∈ {11, 12}
+  ∧ e.precedence est obligatoire (pas de valeur par défaut implicite)
+```
+
+`nature: memoria` est l'unique valeur couvrant toutes les mémoires liturgiques. La distinction obligatoire/ad libitum est portée exclusivement par `precedence` : 11 pour `MemoriaeObligatoriae`, 12 pour `FeriaePerAnnumEtMemoriaeAdLibitum`. Toute autre valeur de `precedence` associée à `nature: memoria` indique une incohérence entre axe typologique et axe ordinal.
+
+`precedence` est **obligatoire** dans tout bloc `history[]` où `nature: memoria` est déclaré — une valeur implicite par défaut constituerait une incohérence silencieuse non détectable.
+
+Violation → `ParseError::InvalidMemoriaPrecedence { slug, from, found_precedence }`
+
+Message de diagnostic canonique :
+
+```
+ERREUR FORGE [V-Natura-Memoria] : précédence incompatible avec natura Memoria
+  Slug       : s_thomae_mori
+  Bloc from  : 1970
+  Précédence : 9 (FestaPropria) — attendu 11 (MemoriaeObligatoriae) ou 12 (FeriaePerAnnumEtMemoriaeAdLibitum)
+```
+
 **V6 — Stem du nom de fichier syntaxiquement valide**
 
 ```
@@ -1130,6 +1153,7 @@ Ce tableau est la clé de lecture bidirectionnelle entre les codes d'erreur Rust
 | `ParseError::TransferDuplicateCollides { slug, collides }`         | **E — V-T3** | Deux entrées `transfers` référencent le même concurrent                   |
 | `ParseError::TransferOffsetNotPositive { slug, collides, offset }` | **E — V-T4** | Offset de transfert nul ou négatif — déplacement vers l'avant obligatoire |
 | `ParseError::I18nMissingLatinKey { slug, from, field }`            | **F — V-I1** | Clé `{slug}.{from}.{field}` absente du dictionnaire `i18n/la/`            |
+| `ParseError::InvalidMemoriaPrecedence { slug, from, found_precedence }` | **D — V-Natura-Memoria** | `nature: memoria` avec `precedence ∉ {11, 12}` |
 | `ParseError::I18nOrphanKey { slug, lang, from, field }`            | **F — V-I2** | Clé dictionnaire référençant un `from` absent du `history[]`              |
 
 ---
@@ -1306,6 +1330,7 @@ Avant de soumettre un fichier YAML à la Forge :
 - [ ] L'évolution de `precedence` ou de `nature` est portée par des entrées `history` distinctes
 - [ ] Les plages `[from, to]` du bloc `history` sont disjointes pour un même slug/scope
 - [ ] `precedence` ∈ [0, 12] pour chaque entrée `history` — jamais 13, 14 ou 15
+- [ ] Si `nature: memoria` : `precedence` est **obligatoire** et vaut 11 (obligatoire) ou 12 (ad libitum) — toute autre valeur est fatale (V-Natura-Memoria)
 - [ ] `nature` est l'une des 5 valeurs admises (§6.2) — aucun terme canonique informel
 - [ ] `color` est l'une des 6 valeurs admises (§6.3)
 - [ ] `from` ≥ 1969 et `to` ≤ 2399 pour toutes les entrées `history`
@@ -1327,4 +1352,5 @@ Avant de soumettre un fichier YAML à la Forge :
 
 **Fin du Contrat de Données Amont v1.3.3 — ❄️ GELÉ**
 
-_Document créé le 2026-03-07. Révisé le 2026-04-09 (v1.3.1). Révisé le 2026-04-10 (v1.3.2 : ancres `nativitas`, `epiphania`). Révisé le 2026-04-10 (v1.3.3 — GELÉ) : ancre `tempus_ordinarium`, champ `ordinal` exclusif, validation V4a, règle de résolution O(1) via `adventus`, comportement `Ok(None)` pour slots absorbés. Référence : `specification.md` v2.2._
+
+**Fin du Contrat de Données Amont v1.3.4**

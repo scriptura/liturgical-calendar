@@ -1,6 +1,6 @@
 # Roadmap de Développement : Liturgical Calendar v2.2
 
-**Version** : 2.2.0  
+**Version** : 2.2.1  
 **Date de Révision** : 2026-04-10  
 **Méthodologie** : 3 jalons, chacun produisant un livrable binaire validable indépendamment  
 **Critères de Succès** : Conformité binaire Forge↔Engine · SHA-256 cross-platform · Fuzzing · CI 4 cibles
@@ -8,14 +8,6 @@
 ---
 
 ## État du Corpus (2026-04-10)
-
-### Historique des extensions d'ancres
-
-| Version contrat | Version spec | Date       | Extension                                      |
-| --------------- | ------------ | ---------- | ---------------------------------------------- |
-| v1.3.1          | v2.0         | 2026-04-09 | Base : `pascha`, `adventus`, `pentecostes`     |
-| v1.3.2          | v2.1         | 2026-04-10 | + `nativitas`, `epiphania`                     |
-| v1.3.3          | v2.2         | 2026-04-10 | + `tempus_ordinarium` (champ `ordinal`)        |
 
 ### État du corpus YAML
 
@@ -740,4 +732,4 @@ Serveur HTTP léger wrappant les 4 fonctions FFI de l'Engine. Endpoints : `GET /
 
 **Fin de la Roadmap v2.2**
 
-_Révisée le 2026-04-10 (v2.2.0). Trois jalons : Binary Foundation, The Compiler, Sanctification. Engine (`liturgical-calendar-core`) : 4 fonctions FFI, `no_std`/`no_alloc`, projecteur de mémoire O(1). Forge (`liturgical-calendar-forge`) : compilateur AOT, pipeline en 6 étapes, logique liturgique complète. Format binaire `.kald` v2.0 : Header 64 octets, `CalendarEntry` 8 octets, Secondary Pool. Format `.lits` year-aware : Header 32 octets, Entry Table `(FeastID, from, to, str_offset)`, String Pool UTF-8. Convention DOY 0-based. Plage 1969–2399 (431 ans). Modifications v2.0.2–v2.0.4 : slug/version/transfers/ResolutionKey/i18n/LitsProvider. Corrections v2.0.5 : desugaring `pentecostes`, V12, V-T4, V3a étendue. Modifications v2.1 : ancres `nativitas`, `epiphania`. Modifications v2.2 : ancre `tempus_ordinarium` + `ordinal`, V4a, ordre de résolution des ancres, INV-FORGE-ORDINAL, état du corpus (sanctoral complet, temporal en cours). Référence : `specification.md` v2.2.0, `liturgical-scheme.md` v1.3.3._
+_Architecture AOT-Only. Engine : 4 fonctions FFI, `no_std`/`no_alloc`, O(1). Forge : compilateur AOT, pipeline 6 étapes, `.kald` + `.lits`. Plage 1969–2399. Référence : `specification.md` v2.2.1, `liturgical-scheme.md`._
