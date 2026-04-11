@@ -17,27 +17,16 @@
 
 #### Temporal — EN COURS
 
-| Lot                                       | État         | Fichiers                                              |
-| ----------------------------------------- | ------------ | ----------------------------------------------------- |
-| Dimanches de l'Avent (I–IV)               | ✅ Livré      | `dominica_i_adventus` … `dominica_iv_adventus`        |
-| Noël fixe                                 | ✅ Livré      | `in_nativitate_domini`, `sanctae_dei_genetricis_mariae`, `in_epiphania_domini` |
-| Cycle de Noël mobile                      | ✅ Livré      | `sancta_familiae_iesu_mariae_et_ioseph`, `in_baptismate_domini` |
-| Carême + Semaine Sainte                   | ⏳ À générer  |                                                       |
-| Octave pascale + Dimanches de Pâques      | ⏳ À générer  |                                                       |
-| Fêtes mobiles majeures (Trinité, Corpus…) | ⏳ À générer  |                                                       |
-| Dimanches du Temps Ordinaire (X–XXXIV)    | ⏳ À générer  | Ancre `tempus_ordinarium` + `ordinal` — déblocage v1.3.3 |
-| Christ-Roi + fin de cycle                 | ⏳ À générer  | `domini_nostro_iesu_christi_regis_universi`           |
-
-### Points ouverts
-
-| # | Sujet                                     | Statut                                          |
-| - | ----------------------------------------- | ----------------------------------------------- |
-| 1 | Slug `in_ascensione_domini` vs `ascensio_domini` | ⚠ En attente de confirmation définitive   |
-| 2 | Dimanches TO ordinals 1–9 (absorption)    | ✅ Résolu par architecture — Ok(None) Étape 3   |
-| 3 | `in_commemoratione_omnium_fidelium_defunctorum` : `nature: commemoratio` vs `sollemnitas` | ⚠ À confirmer |
-| 4 | `barnabae` : `memoria` vs `festum`        | ⚠ À confirmer contre source primaire            |
-| 5 | `irenaei` : élévation de rang 2022        | ⚠ À confirmer (festum ou memoria uniquement ?)  |
-| 6 | `iosephi_opificis` : obligatoire ou ad libitum | ⚠ À confirmer                             |
+| Lot                                       | État         | Fichiers                                                                       |
+| ----------------------------------------- | ------------ | ------------------------------------------------------------------------------ |
+| Dimanches de l'Avent (I–IV)               | ✅ Livré     | `dominica_i_adventus` … `dominica_iv_adventus`                                 |
+| Noël fixe                                 | ✅ Livré     | `in_nativitate_domini`, `sanctae_dei_genetricis_mariae`, `in_epiphania_domini` |
+| Cycle de Noël mobile                      | ✅ Livré     | `sancta_familiae_iesu_mariae_et_ioseph`, `in_baptismate_domini`                |
+| Carême + Semaine Sainte                   | ⏳ À générer |                                                                                |
+| Octave pascale + Dimanches de Pâques      | ⏳ À générer |                                                                                |
+| Fêtes mobiles majeures (Trinité, Corpus…) | ⏳ À générer |                                                                                |
+| Dimanches du Temps Ordinaire (X–XXXIV)    | ⏳ À générer | Ancre `tempus_ordinarium` + `ordinal` — déblocage v1.3.3                       |
+| Christ-Roi + fin de cycle                 | ⏳ À générer | `domini_nostro_iesu_christi_regis_universi`                                    |
 
 ### Décisions architecturales gelées
 
