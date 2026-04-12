@@ -28,10 +28,26 @@ Toute dépendance de l'Engine vers la Forge constitue une **violation architectu
 Le pragma exact à utiliser dans `liturgical-calendar-core/src/lib.rs` est :
 
 ```rust
-#![cfg_attr(not(test), no_std)]
+#![cfg_attr(not(any(test, feature = "std")), no_std)]
 ```
 
-Le mode `cargo test` compile avec `std` pour le harness — `#![no_std]` inconditionnel rend le harness inopérant. Hors test, `no_std` est actif sans exception. `Vec`, `String`, `Box`, `HashMap` restent **interdits dans le code de production** — le `cfg(test)` n'ouvre aucun droit d'utilisation dans les modules non-test. `extern crate alloc` reste interdit dans tous les contextes.
+La disjonction `any(test, feature = "std")` couvre deux cas légitimes :
+- `test` : le harness `cargo test` compile avec `std` — `#![no_std]` inconditionnel le rend inopérant.
+- `feature = "std"` : la Forge active cette feature via sa dev-dependency sur le Core (`features = ["std"]`) pour ses tests d'intégration (ex: `conformity_2025`).
+
+Hors de ces deux contextes, `no_std` est actif sans exception. `Vec`, `String`, `Box`, `HashMap` restent **interdits dans le code de production** — les contextes `test` et `feature = "std"` n'ouvrent aucun droit d'utilisation dans les modules non-test. `extern crate alloc` reste interdit dans tous les contextes.
+
+Le Core expose la feature dans son `Cargo.toml` :
+```toml
+[features]
+std = []
+```
+
+La Forge la consomme en dev-dependency :
+```toml
+[dev-dependencies]
+liturgical-calendar-core = { path = "../liturgical-calendar-core", features = ["std"] }
+```
 
 **Dépendances externes autorisées** : les crates certifiées `no_std` + `no_alloc` et auditées par des tiers sont admises sous condition d'approbation explicite dans ce document. Liste figée :
 
