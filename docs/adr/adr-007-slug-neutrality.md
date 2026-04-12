@@ -1,4 +1,4 @@
-# ADR-004 — Neutralité du Slug : Interdiction d'encoder le Statut Liturgique
+# ADR-007 — Neutralité du Slug : Interdiction d'encoder le Statut Liturgique
 
 **Statut** : Accepté  
 **Date** : 2026-04-10  
@@ -62,11 +62,13 @@ Le contrat impose `[a-z][a-z0-9_]*` comme syntaxe de slug. Cette règle exclut l
 ## Conséquences
 
 **Positives :**
+
 - Stabilité des `FeastID` garantie pour toute canonisation future — aucune intervention sur le corpus ou le `feast_registry.lock`.
 - Cohérence du modèle : le slug est une clé technique, pas un label liturgique.
 - Les dictionnaires `i18n/` sont le seul vecteur d'évolution du label textuel — séparation nette data/présentation.
 
 **Contraintes acceptées :**
+
 - Le slug ne communique pas le statut au lecteur humain. Un contributeur qui lit `ioannis_pauli_ii.yaml` ne sait pas si la fête est pour un bienheureux ou un saint sans consulter le bloc `history` ou l'`i18n`. C'est le coût de la neutralité — acceptable car le statut est dans les données, pas dans la clé.
 - La règle est sémantique et ne peut pas être vérifiée mécaniquement par la Forge sans une liste noire de préfixes/suffixes interdits. La vérification est humaine (code review du corpus).
 
@@ -80,5 +82,4 @@ Le contrat impose `[a-z][a-z0-9_]*` comme syntaxe de slug. Cette règle exclut l
 
 ## Références
 
-- `liturgical-scheme.md` v1.3.3 — §2.1 : identité du slug, règle de neutralité, exemples valides/invalides
 - ADR-001 — Indépendance de la résolution DOY (contexte : stabilité des identifiants)

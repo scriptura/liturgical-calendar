@@ -1,10 +1,10 @@
-# Liturgical Scheme v1.0 — Contrat de Données Amont
+# Liturgical Scheme — Contrat de Données Amont
 
 **Statut** : Canonique / Source de Vérité YAML  
 **Scope** : `liturgical-calendar-forge` — Étapes 1 (Rule Parsing) et 2 (Canonicalization)  
-**Référence** : `specification.md` v2.2.1  
-**Date de Révision** : 2026-04-10  
-**Version** : 1.3.4
+**Référence** : `specification.md` v2.4
+**Date de Révision** : 2026-04-12
+**Version** : 1.5.0
 
 ---
 
@@ -17,7 +17,7 @@ Ce document est le **contrat de données amont** de la Forge. Il définit exhaus
 ```
 YAML (version, category, date|mobile, transfers, history…)   [pur graphe métier — zéro String]
 + Dictionnaires i18n (la/, fr/, …)                           [source de vérité textuelle externe]
-  → [Étape 1] Rule Parsing + Validation V1–V6, V-T1–V-T3
+  → [Étape 1] Rule Parsing + Validation V1–V6, V-T1–V-T5
     → [Étape 1bis] i18n Resolution — corrélation YAML ↔ dict, fallback latin AOT (V-I1)
       → [Étape 2] Canonicalization (DOY, Pâques, dates mobiles)
         → [Étapes 3–5] Resolution (bloc transfers) → Materialization → Binary Packing
@@ -130,6 +130,7 @@ history:
     nature: sollemnitas
     color: albus
     season: tempus_nativitatis # Optionnel — voir §2.3
+    has_vigil_mass: false # Optionnel — défaut false. True pour les vigiles propres (Noël, Pâques).
     # title : absent du YAML — défini dans i18n/la/nativitas_domini.yaml (§4.4)
 ```
 
@@ -163,11 +164,15 @@ feasts:
     # Transferts déclaratifs — optionnel — voir §2.4
     transfers:
       - collides: <slug_concurrent> # Slug (= stem du fichier) de la fête en collision
-        offset: <integer> # OU date: — exclusifs — voir §2.4
+        offset: <u32 ≥ 1> # OU date: OU mobile: — les trois sont mutuellement exclusifs
       - collides: <slug_concurrent>
         date:
           month: <1–12>
           day: <1–31>
+      - collides: <slug_concurrent>
+        mobile: # Cible mobile — pré-résolue par la Forge à l'Étape 3
+          anchor: <anchor_id> # Ancre primitive uniquement (V-T5) — offset signé admis
+          offset: <integer> # Peut être négatif (transfert rétrograde)
 
     history: # Tableau ordonné des versions — voir §4
       - from: <year>
@@ -176,6 +181,7 @@ feasts:
         nature: <string>
         color: <string>
         season: <string> # Optionnel — voir §2.3
+        has_vigil_mass: <bool> # Optionnel, défaut false — voir §2.5
         # Labels textuels (title, etc.) : externalisés dans i18n/{lang}/{slug}.yaml (§4.4)
 ```
 
@@ -279,13 +285,16 @@ transfers:
 
 ### Sémantique
 
-| Clé        | Type           | Signification                                                                       |
-| ---------- | -------------- | ----------------------------------------------------------------------------------- |
-| `collides` | String (slug)  | La fête dont la présence sur le même DOY déclenche la règle de transfert            |
-| `offset`   | **u32 ≥ 1**    | Décalage en jours vers l'avant depuis le DOY de collision — **strictement positif** |
-| `date`     | `{month, day}` | Date fixe de repli, indépendante du DOY de collision                                |
+| Clé        | Type               | Signification                                                                                       |
+| ---------- | ------------------ | --------------------------------------------------------------------------------------------------- |
+| `collides` | String (slug)      | La fête dont la présence sur le même DOY déclenche la règle de transfert                            |
+| `offset`   | **u32 ≥ 1**        | Décalage en jours **vers l'avant** depuis le DOY de collision — strictement positif (V-T4)          |
+| `date`     | `{month, day}`     | Date fixe de repli, indépendante du DOY de collision                                                |
+| `mobile`   | `{anchor, offset}` | Cible calculée depuis une ancre primitive — offset **signé** (négatif admis = transfert rétrograde) |
 
-**`offset` et `date` sont mutuellement exclusifs.** Une entrée qui déclare les deux est rejetée avec `ParseError::TransferAmbiguous { slug, collides }`. Une entrée qui ne déclare ni l'un ni l'autre est également invalide — la règle serait sans effet.
+**`offset`, `date` et `mobile` sont mutuellement exclusifs.** Une entrée déclarant plus d'une option est rejetée avec `ParseError::TransferAmbiguous`. Une entrée sans aucune option est invalide (`ParseError::TransferEmpty`).
+
+**Cas d'usage de `mobile` — transferts rétrogrades :** lorsque la cible de repli est antérieure en DOY à la fête déplacée (ex: Saint Joseph → samedi avant les Rameaux = pascha−8, qui peut être antérieur au 19 mars), `offset` positif est impossible. La cible `mobile` est pré-résolue par la Forge à l'**Étape 3** avant la Conflict Resolution, contournant l'invariant de monotonie de la `TransferQueue`. L'offset dans `mobile` peut être négatif.
 
 ### Invariants
 
@@ -326,7 +335,80 @@ transfers:
       day: 25
 ```
 
+### Exemple — Saint Joseph (transfert rétrograde)
+
+Règle liturgique : si le 19 mars tombe pendant la Semaine Sainte, Saint Joseph est déplacé au samedi précédant les Rameaux (pascha − 8). Ce DOY peut être inférieur au 19 mars — impossible avec `offset` direct.
+
+```yaml
+# data/universale/sanctorale/iosephi.yaml
+version: 1
+category: 1
+date:
+  month: 3
+  day: 19
+transfers:
+  - collides: dominica_in_palmis # Dimanche des Rameaux = pascha − 7
+    mobile:
+      anchor: pascha
+      offset: -8 # Samedi avant les Rameaux — offset signé, peut être rétrograde
+history:
+  - from: 1969
+    precedence: 1
+    nature: sollemnitas
+    color: albus
+```
+
+La Forge résout `pascha − 8` à l'Étape 3 et stocke le DOY cible dans `PreResolvedTransfers`. La Passe 3 de l'Étape 4 insère directement Saint Joseph à ce DOY, sans passer par la `TransferQueue`.
+
 ---
+
+---
+
+## 2.5 Champ `has_vigil_mass` dans `history`
+
+Le champ `has_vigil_mass` est **optionnel**, de type booléen, défaut `false`. Quand il est `true`, il indique que cette fête possède une **Messe de Vigile propre** — une liturgie eucharistique distincte célébrée le soir civil précédant la fête.
+
+Ce champ ne concerne pas les Premières Vêpres (calculées automatiquement par la Forge) mais uniquement les messes de vigile propres : Noël (`nativitas_domini`), Pâques (`pascha`), Pentecôte, et éventuellement d'autres fêtes locales.
+
+**Comportement de la Forge :**
+
+À l'Étape 5 (passe vespérale), si `has_vigil_mass: true` est déclaré pour la fête de DOY :
+
+1. Le bit 15 (`HAS_VIGILIA`) est levé sur la `CalendarEntry` du DOY de la fête elle-même.
+2. La passe vespérale reporte également ce bit sur la `CalendarEntry` de DOY−1 (la veille).
+
+**Le YAML reste inchangé pour 99% des fêtes.** Ce champ ne doit pas être confondu avec `has_vigil_mass` déclaré sur des Solennités qui n'ont pas de vigile propre — la règle des Premières Vêpres est automatique et ne nécessite aucune déclaration.
+
+**Validation V-Vigilia :**
+
+```
+∀ entrée e ∈ history avec e.has_vigil_mass == true :
+  e.nature ∈ { Sollemnitas }  // Les vigiles propres n't appartiennent qu'aux Solennités
+```
+
+Violation → `ParseError::VigiliaNonSollemnitas { slug, from, nature }`
+
+**Exemples :**
+
+```yaml
+# data/universale/temporale/pascha.yaml
+history:
+  - from: 1969
+    precedence: 0
+    nature: sollemnitas
+    color: albus
+    season: tempus_paschale
+    has_vigil_mass: true  # Vigile pascale — messe propre le Samedi Saint au soir
+
+# data/universale/sanctorale/nativitas_domini.yaml
+history:
+  - from: 1969
+    precedence: 1
+    nature: sollemnitas
+    color: albus
+    season: tempus_nativitatis
+    has_vigil_mass: true  # Messe de Minuit / Vigile de Noël
+```
 
 ## 3. Temporalité
 
@@ -540,6 +622,7 @@ history:
     nature: <string> # Voir §6.2.
     color: <string> # Voir §6.3.
     season: <string> # Optionnel — voir §2.3 et §6.4.
+    has_vigil_mass: <bool># Optionnel, défaut false — voir §2.5.
     # Aucun champ textuel (title, name…) : labels externalisés dans i18n/{lang}/{slug}.yaml (§4.4)
 ```
 
@@ -823,13 +906,13 @@ Valeurs admises : **0 à 12 inclus**. Valeurs 13–15 : réservées système —
 
 Valeurs YAML (insensibles à la casse, normalisées par la Forge) et leur correspondance en `CalendarEntry.flags` bits [13:11] :
 
-| Valeur YAML    | `Nature` Rust          | Valeur numérique | Note                                                       |
-| -------------- | ---------------------- | ---------------- | ---------------------------------------------------------- |
-| `sollemnitas`  | `Nature::Sollemnitas`  | 0                |                                                            |
-| `festum`       | `Nature::Festum`       | 1                |                                                            |
+| Valeur YAML    | `Nature` Rust          | Valeur numérique | Note                                                                                                               |
+| -------------- | ---------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `sollemnitas`  | `Nature::Sollemnitas`  | 0                |                                                                                                                    |
+| `festum`       | `Nature::Festum`       | 1                |                                                                                                                    |
 | `memoria`      | `Nature::Memoria`      | 2                | Couvre obligatoire (precedence=11) et ad libitum (precedence=12). `precedence` obligatoire. Voir V-Natura-Memoria. |
-| `feria`        | `Nature::Feria`        | 3                | Inclut les Dominicae (classe de Precedence, pas de Nature) |
-| `commemoratio` | `Nature::Commemoratio` | 4                |                                                            |
+| `feria`        | `Nature::Feria`        | 3                | Inclut les Dominicae (classe de Precedence, pas de Nature)                                                         |
+| `commemoratio` | `Nature::Commemoratio` | 4                |                                                                                                                    |
 
 Toute autre valeur → `RegistryError::UnknownNatureString(String)` avec hint :
 
@@ -872,22 +955,23 @@ Si omis dans le YAML, la Forge calcule la saison depuis les `SeasonBoundaries` d
 
 Tableau de correspondance complet entre les champs YAML et les champs binaires de `CalendarEntry` (spec §3.3–3.4) :
 
-| Champ YAML                        | Type YAML           | Destination binaire                | Offset | Note                                                                           |
-| --------------------------------- | ------------------- | ---------------------------------- | ------ | ------------------------------------------------------------------------------ |
-| _(stem du nom de fichier)_        | —                   | —                                  | —      | Slug : clé FeastRegistry. Déduit du chemin. Absent du `.kald`.                 |
-| `id`                              | u16 \| null         | `CalendarEntry.primary_id`         | 0      | Alloué par la Forge si absent.                                                 |
-| `date.month` + `date.day`         | Integer             | DOY 0-based (formule §3.1)         | —      | Formule : `MONTH_STARTS[month-1] + day - 1`                                    |
-| `mobile.anchor` + `mobile.offset` | String + Integer    | DOY 0-based (Étape 2)              | —      | Résolution Pâques + offset                                                     |
-| `transfers[]`                     | Tableau             | —                                  | —      | Consommé exclusivement par la Passe 3 de l'Étape 3. Absent du `.kald`.         |
-| —                                 | —                   | `CalendarEntry.secondary_index`    | 2      | Alimenté par Étape 4 (Materialization)                                         |
-| `history[].precedence`            | Integer [0–12]      | `CalendarEntry.flags` bits [3:0]   | 4      |                                                                                |
-| `history[].color`                 | String enum         | `CalendarEntry.flags` bits [7:4]   | 4      |                                                                                |
-| `history[].season`                | String enum \| null | `CalendarEntry.flags` bits [10:8]  | 4      | Calculé si absent                                                              |
-| `history[].nature`                | String enum         | `CalendarEntry.flags` bits [13:11] | 4      |                                                                                |
-| —                                 | —                   | `CalendarEntry.secondary_count`    | 6      | Alimenté par Étape 3 (Conflict Resolution)                                     |
-| _(clé `{slug}.{from}.{field}`)_   | —                   | Fichier `.lits`                    | —      | Clé implicite. Résolue via dictionnaires i18n (Étape 1bis). Absent du `.kald`. |
-| `scope`                           | String enum         | FeastID bits [15:14]               | —      | `universal=00`, `national=01`, `diocesan=10`                                   |
-| `category`                        | Integer [0–3]       | FeastID bits [13:12]               | —      |                                                                                |
+| Champ YAML                        | Type YAML           | Destination binaire                                          | Offset | Note                                                                           |
+| --------------------------------- | ------------------- | ------------------------------------------------------------ | ------ | ------------------------------------------------------------------------------ |
+| _(stem du nom de fichier)_        | —                   | —                                                            | —      | Slug : clé FeastRegistry. Déduit du chemin. Absent du `.kald`.                 |
+| `id`                              | u16 \| null         | `CalendarEntry.primary_id`                                   | 0      | Alloué par la Forge si absent.                                                 |
+| `date.month` + `date.day`         | Integer             | DOY 0-based (formule §3.1)                                   | —      | Formule : `MONTH_STARTS[month-1] + day - 1`                                    |
+| `mobile.anchor` + `mobile.offset` | String + Integer    | DOY 0-based (Étape 2)                                        | —      | Résolution Pâques + offset                                                     |
+| `transfers[]`                     | Tableau             | —                                                            | —      | Consommé exclusivement par la Passe 3 de l'Étape 3. Absent du `.kald`.         |
+| —                                 | —                   | `CalendarEntry.secondary_index`                              | 2      | Alimenté par Étape 4 (Materialization)                                         |
+| `history[].precedence`            | Integer [0–12]      | `CalendarEntry.flags` bits [3:0]                             | 4      |                                                                                |
+| `history[].color`                 | String enum         | `CalendarEntry.flags` bits [7:4]                             | 4      |                                                                                |
+| `history[].season`                | String enum \| null | `CalendarEntry.flags` bits [10:8]                            | 4      | Calculé si absent                                                              |
+| `history[].nature`                | String enum         | `CalendarEntry.flags` bits [13:11]                           | 4      |                                                                                |
+| `history[].has_vigil_mass`        | bool (défaut false) | `CalendarEntry.flags` bit 15 (HAS_VIGILIA) + bit 15 du DOY−1 | 4      | Reporté sur la veille par la passe vespérale (Étape 5)                         |
+| —                                 | —                   | `CalendarEntry.secondary_count`                              | 6      | Alimenté par Étape 3 (Conflict Resolution)                                     |
+| _(clé `{slug}.{from}.{field}`)_   | —                   | Fichier `.lits`                                              | —      | Clé implicite. Résolue via dictionnaires i18n (Étape 1bis). Absent du `.kald`. |
+| `scope`                           | String enum         | FeastID bits [15:14]                                         | —      | `universal=00`, `national=01`, `diocesan=10`                                   |
+| `category`                        | Integer [0–3]       | FeastID bits [13:12]                                         | —      |                                                                                |
 
 > **Rappel layout `CalendarEntry` (spec §3.3) :** `primary_id (u16, off 0)` | `secondary_index (u16, off 2)` | `flags (u16, off 4)` | `secondary_count (u8, off 6)` | `_reserved (u8, off 7)`. Les trois `u16` sont aux offsets pairs — alignement naturel garanti.
 
@@ -1032,6 +1116,17 @@ ERREUR FORGE [V-Natura-Memoria] : précédence incompatible avec natura Memoria
   Précédence : 9 (FestaPropria) — attendu 11 (MemoriaeObligatoriae) ou 12 (FeriaePerAnnumEtMemoriaeAdLibitum)
 ```
 
+**V-Vigilia — Vigile propre réservée aux Solennités**
+
+```
+∀ entrée e ∈ history avec e.has_vigil_mass == true :
+  e.nature == Sollemnitas
+```
+
+Une messe de vigile propre (GNLYC §73) n'appartient qu'aux Solennités. Déclarer `has_vigil_mass: true` sur une Fête, Mémoire ou Férie constitue une incohérence liturgique fatale.
+
+Violation → `ParseError::VigiliaNonSollemnitas { slug, from, nature }`
+
 **V6 — Stem du nom de fichier syntaxiquement valide**
 
 ```
@@ -1050,20 +1145,20 @@ Violation → `ParseError::InvalidSlugSyntax(String)` — la `String` contient l
 
 Violation → `RegistryError::InvalidPrecedenceValue(u8)` (valeurs 13–15 réservées système)
 
-### Groupe E — Validité du Bloc `transfers` (V-T1, V-T2, V-T3, V-T4)
+### Groupe E — Validité du Bloc `transfers` (V-T1, V-T2, V-T3, V-T4, V-T5)
 
-Ces validations sont appliquées durant l'**Étape 1 (Rule Parsing)**, lors de la désérialisation du bloc `transfers`. Tout échec est fatal.
+Ces validations sont appliquées durant l'**Étape 1 (Rule Parsing)**, lors de la désérialisation du bloc `transfers`. V-T5 est vérifiée à l'Étape 1 (ancre admissible) ; la résolution effective des cibles `mobile` a lieu à l'**Étape 3** (Canonicalization). Tout échec est fatal.
 
-**V-T1 — Exclusivité `offset` / `date` dans chaque entrée**
+**V-T1 — Exclusivité `offset` / `date` / `mobile` dans chaque entrée**
 
 ```
 ∀ entrée t ∈ transfers :
-  (t.offset présent) XOR (t.date présent)
+  exactly_one_of(t.offset présent, t.date présent, t.mobile présent)
 ```
 
-Une entrée qui déclare les deux clés (`offset` et `date`) est ambiguë. Une entrée qui n'en déclare aucune est sans effet et donc invalide.
+Les trois options sont mutuellement exclusives. Une entrée déclarant plus d'une option est ambiguë. Une entrée sans aucune option est sans effet et invalide.
 
-Violations → `ParseError::TransferAmbiguous { slug, collides }` (les deux présents) · `ParseError::TransferEmpty { slug, collides }` (aucun)
+Violations → `ParseError::TransferAmbiguous { slug, collides }` (plus d'une option) · `ParseError::TransferEmpty { slug, collides }` (aucune)
 
 **V-T2 — Résolvabilité de `collides` dans le `FeastRegistry`**
 
@@ -1086,16 +1181,29 @@ Deux entrées référençant le même slug concurrent produiraient un comporteme
 
 Violation → `ParseError::TransferDuplicateCollides { slug, collides }`
 
-**V-T4 — Offset de transfert strictement positif**
+**V-T4 — Offset direct strictement positif**
 
 ```
 ∀ entrée t ∈ transfers avec t.offset présent :
   t.offset ≥ 1
 ```
 
-Le transfert est, par invariant architectural, un déplacement **vers l'avant** uniquement. Un `offset = 0` serait un no-op (la fête resterait sur le slot de collision). Un `offset` négatif serait un déplacement vers le passé, incompatible avec la garantie de terminaison de la `TransferQueue` (transferts strictement croissants en DOY — spec §3.3 Passe 4). Le type YAML est désérialisé en `u32` — toute valeur YAML négative ou nulle est rejetée à la désérialisation.
+Le champ `offset` direct désigne un décalage vers l'**avant** uniquement — il est utilisé par la `TransferQueue` dont l'invariant est `doy_dst > doy_src`. Un `offset = 0` serait un no-op. Un offset négatif est interdit pour cette forme. Le type YAML est désérialisé en `u32`.
+
+**Note :** le champ `mobile.offset` dans une entrée `transfers.mobile` est un entier **signé** et peut être négatif (transfert rétrograde). V-T4 ne s'applique pas à `mobile.offset` — ces cibles sont pré-résolues à l'Étape 3 hors de la `TransferQueue`.
 
 Violation → `ParseError::TransferOffsetNotPositive { slug, collides, offset }`
+
+**V-T5 — Ancre primitive dans `transfers.mobile`**
+
+```
+∀ entrée t ∈ transfers avec t.mobile présent :
+  t.mobile.anchor ∈ { "pascha", "adventus", "pentecostes", "nativitas", "epiphania" }
+```
+
+L'ancre d'une cible mobile doit être une **ancre primitive** de la table §3.2 (hors `tempus_ordinarium` qui utilise `ordinal` et non `offset`). Les références à d'autres fêtes par slug sont interdites — la résolution de la cible ne doit pas dépendre d'une fête dont le propre DOY n'est pas encore calculé. Cette contrainte garantit l'acyclicité de la Canonicalization.
+
+Violation → `ParseError::TransferMobileInvalidAnchor { slug, collides, anchor }`
 
 ### Groupe F — Corrélation YAML ↔ Dictionnaires i18n (V-I1, V-I2)
 
@@ -1127,7 +1235,7 @@ Violation → `ParseError::I18nOrphanKey { slug, lang, from, field }`
 
 ### Tableau de Correspondance Spec §10 ↔ Ce Document
 
-Ce tableau est la clé de lecture bidirectionnelle entre les codes d'erreur Rust (spec §10) et les groupes de validation de ce document. Les codes V1–V6, V-T1–V-T4 et V-I1–V-I2 sont les seuls identifiants à utiliser dans le code et les messages d'erreur produits par la Forge.
+Ce tableau est la clé de lecture bidirectionnelle entre les codes d'erreur Rust (spec §10) et les groupes de validation de ce document. Les codes V1–V6, V-T1–V-T5 et V-I1–V-I2 sont les seuls identifiants à utiliser dans le code et les messages d'erreur produits par la Forge.
 
 | Code spec §10 | Variant Rust (`RegistryError` / `ParseError`)         | Groupe §8      | Libellé                                                         |
 | ------------- | ----------------------------------------------------- | -------------- | --------------------------------------------------------------- |
@@ -1140,21 +1248,23 @@ Ce tableau est la clé de lecture bidirectionnelle entre les codes d'erreur Rust
 
 **Validations §8 sans code V-numéroté dans la spec** (erreurs structurelles de parsing) :
 
-| Variant Rust                                                       | Groupe §8    | Libellé                                                                   |
-| ------------------------------------------------------------------ | ------------ | ------------------------------------------------------------------------- |
-| `ParseError::MalformedYaml` / `UnsupportedSchemaVersion`           | **A — V1**   | Syntaxe YAML invalide ou `version != 1`                                   |
-| `RegistryError::DuplicateSlug { slug, scope }`                     | **B — V2a**  | Collision de slug dans le même scope (même stem, même répertoire scope)   |
-| `RegistryError::FeastIDConflict { id, slug_a, slug_b }`            | **B — V2b**  | Collision sur `id` explicite                                              |
-| `ParseError::InvalidDate { slug, month, day }`                     | **C — V3a**  | Date fixe impossible (ex: 30 février)                                     |
-| `ParseError::CircularDependency { slug, anchor }`                  | **D — V4**   | Cycle dans le graphe des ancres mobiles                                   |
-| `ParseError::TransferAmbiguous { slug, collides }`                 | **E — V-T1** | Entrée `transfers` avec `offset` et `date` simultanément                  |
-| `ParseError::TransferEmpty { slug, collides }`                     | **E — V-T1** | Entrée `transfers` sans `offset` ni `date`                                |
-| `ParseError::UnknownCollidesTarget { slug, collides }`             | **E — V-T2** | Slug `collides` absent du `FeastRegistry`                                 |
-| `ParseError::TransferDuplicateCollides { slug, collides }`         | **E — V-T3** | Deux entrées `transfers` référencent le même concurrent                   |
-| `ParseError::TransferOffsetNotPositive { slug, collides, offset }` | **E — V-T4** | Offset de transfert nul ou négatif — déplacement vers l'avant obligatoire |
-| `ParseError::I18nMissingLatinKey { slug, from, field }`            | **F — V-I1** | Clé `{slug}.{from}.{field}` absente du dictionnaire `i18n/la/`            |
-| `ParseError::InvalidMemoriaPrecedence { slug, from, found_precedence }` | **D — V-Natura-Memoria** | `nature: memoria` avec `precedence ∉ {11, 12}` |
-| `ParseError::I18nOrphanKey { slug, lang, from, field }`            | **F — V-I2** | Clé dictionnaire référençant un `from` absent du `history[]`              |
+| Variant Rust                                                            | Groupe §8                | Libellé                                                                 |
+| ----------------------------------------------------------------------- | ------------------------ | ----------------------------------------------------------------------- |
+| `ParseError::MalformedYaml` / `UnsupportedSchemaVersion`                | **A — V1**               | Syntaxe YAML invalide ou `version != 1`                                 |
+| `RegistryError::DuplicateSlug { slug, scope }`                          | **B — V2a**              | Collision de slug dans le même scope (même stem, même répertoire scope) |
+| `RegistryError::FeastIDConflict { id, slug_a, slug_b }`                 | **B — V2b**              | Collision sur `id` explicite                                            |
+| `ParseError::InvalidDate { slug, month, day }`                          | **C — V3a**              | Date fixe impossible (ex: 30 février)                                   |
+| `ParseError::CircularDependency { slug, anchor }`                       | **D — V4**               | Cycle dans le graphe des ancres mobiles                                 |
+| `ParseError::TransferAmbiguous { slug, collides }`                      | **E — V-T1**             | Plus d'une option parmi `offset`, `date`, `mobile` dans la même entrée  |
+| `ParseError::TransferEmpty { slug, collides }`                          | **E — V-T1**             | Entrée `transfers` sans `offset`, `date` ni `mobile`                    |
+| `ParseError::UnknownCollidesTarget { slug, collides }`                  | **E — V-T2**             | Slug `collides` absent du `FeastRegistry`                               |
+| `ParseError::TransferDuplicateCollides { slug, collides }`              | **E — V-T3**             | Deux entrées `transfers` référencent le même concurrent                 |
+| `ParseError::TransferOffsetNotPositive { slug, collides, offset }`      | **E — V-T4**             | `offset` direct nul ou négatif — `mobile.offset` signé non concerné     |
+| `ParseError::TransferMobileInvalidAnchor { slug, collides, anchor }`    | **E — V-T5**             | Ancre dans `transfers.mobile` non primitive ou `tempus_ordinarium`      |
+| `ParseError::I18nMissingLatinKey { slug, from, field }`                 | **F — V-I1**             | Clé `{slug}.{from}.{field}` absente du dictionnaire `i18n/la/`          |
+| `ParseError::InvalidMemoriaPrecedence { slug, from, found_precedence }` | **D — V-Natura-Memoria** | `nature: memoria` avec `precedence ∉ {11, 12}`                          |
+| `ParseError::VigiliaNonSollemnitas { slug, from, nature }`              | **D — V-Vigilia**        | `has_vigil_mass: true` avec `nature ≠ sollemnitas`                      |
+| `ParseError::I18nOrphanKey { slug, lang, from, field }`                 | **F — V-I2**             | Clé dictionnaire référençant un `from` absent du `history[]`            |
 
 ---
 
@@ -1332,11 +1442,14 @@ Avant de soumettre un fichier YAML à la Forge :
 - [ ] `precedence` ∈ [0, 12] pour chaque entrée `history` — jamais 13, 14 ou 15
 - [ ] Si `nature: memoria` : `precedence` est **obligatoire** et vaut 11 (obligatoire) ou 12 (ad libitum) — toute autre valeur est fatale (V-Natura-Memoria)
 - [ ] `nature` est l'une des 5 valeurs admises (§6.2) — aucun terme canonique informel
+- [ ] Si `has_vigil_mass: true` : `nature` doit être `sollemnitas` (V-Vigilia)
+- [ ] `has_vigil_mass` omis pour les fêtes sans vigile propre — les Premières Vêpres sont automatiques
 - [ ] `color` est l'une des 6 valeurs admises (§6.3)
 - [ ] `from` ≥ 1969 et `to` ≤ 2399 pour toutes les entrées `history`
 - [ ] `from` est renseigné explicitement si différent de 1969
 - [ ] `id` absent sauf besoin documenté d'un identifiant stable
-- [ ] Si bloc `transfers` présent : chaque entrée déclare `offset` **ou** `date`, jamais les deux, jamais aucun
+- [ ] Si bloc `transfers` présent : chaque entrée déclare exactement **une** option parmi `offset`, `date`, `mobile` — les trois sont mutuellement exclusifs (V-T1)
+- [ ] Si `transfers.mobile` utilisé : `anchor` est une ancre primitive admise (V-T5) ; `mobile.offset` peut être négatif (transfert rétrograde)
 - [ ] Si bloc `transfers` présent : chaque valeur de `collides` est un slug existant dans le corpus
 - [ ] Si bloc `transfers` présent : chaque valeur de `collides` est unique dans le bloc
 - [ ] Les fêtes au 29 février (`date.month: 2, date.day: 29`) sont intentionnelles — Padding Entry les années non-bissextiles
@@ -1350,7 +1463,4 @@ Avant de soumettre un fichier YAML à la Forge :
 
 ---
 
-**Fin du Contrat de Données Amont v1.3.3 — ❄️ GELÉ**
-
-
-**Fin du Contrat de Données Amont v1.3.4**
+**Fin du Contrat de Données Amont**

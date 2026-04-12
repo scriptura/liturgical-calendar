@@ -1,7 +1,7 @@
-# Roadmap de Développement : Liturgical Calendar v2.2
+# Roadmap de Développement : Liturgical Calendar
 
-**Version** : 2.2.1  
-**Date de Révision** : 2026-04-10  
+**Version** : 2.4.0  
+**Date de Révision** : 2026-04-12
 **Méthodologie** : 3 jalons, chacun produisant un livrable binaire validable indépendamment  
 **Critères de Succès** : Conformité binaire Forge↔Engine · SHA-256 cross-platform · Fuzzing · CI 4 cibles
 
@@ -408,6 +408,10 @@ pub(crate) struct DictStore {
 - V4a : `anchor: tempus_ordinarium` + `offset` présent → `ParseError::OffsetOnOrdinalAnchor`
 - V4a : `anchor: tempus_ordinarium` + `ordinal` absent → `ParseError::MissingOrdinal`
 - V4a : `anchor: pascha` + `ordinal` présent → `ParseError::OrdinalOnNonOrdinalAnchor`
+- Résolution des cibles `transfers.mobile` après toutes les ancres primitives :
+  `doy_dst = anchor_doy + mobile.offset` (offset signé — négatif admis)
+  Stockage dans `PreResolvedTransfers : HashMap<(slug, collides_slug), u16>`
+- V-T5 (Étape 1) : ancre dans `transfers.mobile` ∉ primitives → `ParseError::TransferMobileInvalidAnchor`
 
 ---
 
@@ -436,7 +440,7 @@ pub(crate) enum Temporality { Fixed = 0, Mobile = 1 }
 
 **Pipeline (5 passes — spec §3.3) :**
 
-- **Passe 1** : Placement de toutes les fêtes (fixes et mobiles) dans `BTreeMap<u16 (doy), Vec<PlacedFeast>>`. Aucun conflit résolu. Les slots `tempus_ordinarium` absorbés produisent `Ok(None)` — pas d'entrée dans la table.
+- **Passe 1** : Placement de toutes les fêtes (fixes et mobiles) dans `BTreeMap<u16 (doy), Vec<PlacedFeast>>`. Aucun conflit résolu. Les slots `tempus_ordinarium` absorbés produisent `Ok(None)` — pas d'entrée dans la table. `PreResolvedTransfers` (produit à l'Étape 3) est disponible en précondition.
 - **Passe 2** : Garde V7 + résolution de scope. Pour chaque slot multi-fêtes : appliquer la hiérarchie `diocesan > national > universal` (§3.1) puis détecter `SolemnityCollision` (Precedence ≤ 3 tout scope, Precedence ∈ [4,5] même scope) — fatal avant tout tri.
 - **Passe 3** : Tri Canonique + Élection + Déclassement (§3.4 spec) + Dispatch Transferts. Appliquer `sort_unstable_by_key(|f| f.resolution_key())` sur chaque slot. `slot[0]` = primary. Partition de `slot[1..]` en secondary_feasts, to_transfer, suppressed. Consulter bloc `transfers` pour chaque fête to_transfer.
 - **Passe 4** : `TransferQueue` — BTreeSet déterministe, transferts strictement vers l'avant, profondeur bornée à 7.
@@ -463,6 +467,11 @@ Sortie : `ResolvedCalendar` — table indexée `(year, doy) → ResolvedDay { pr
 - Itération sur la plage (pour Jalon 2 : uniquement 2025)
 - Génération des 366 slots, dont la Padding Entry à `doy=59` (2025 non-bissextile)
 - Construction du Secondary Pool : collection ordonnée de FeastIDs, attribution des `secondary_index`
+- Passe vespérale (vespers_lookahead_pass) : calcul des bits [15:14] de chaque slot
+  - `HAS_VESPERAE_I` (bit 14) : demain est Solennité/Dimanche ET outrank aujourd'hui
+  - `HAS_VIGILIA` (bit 15) : demain déclare `has_vigil_mass: true`
+  - Edge case : DOY 365 de chaque année → regarder Jan 1 de year+1 (disponible car résolution globale)
+  - Edge case 2399 : DOY 365 de 2399 → pas de lookahead, bits [15:14] = 0
 
 **Test :** 2025 → 366 entrées dont exactement 1 Padding Entry (`doy=59`, `primary_id=0`). Vérifier que `PoolBuilder::insert` déclenche `ForgeError::SecondaryPoolOverflow` (V11) si le pool dépasse 65 535 entrées — injecter un corpus synthétique saturé pour couvrir ce chemin.
 
@@ -739,6 +748,6 @@ Serveur HTTP léger wrappant les 4 fonctions FFI de l'Engine. Endpoints : `GET /
 
 ---
 
-**Fin de la Roadmap v2.2**
+**Fin de la Roadmap**
 
-_Architecture AOT-Only. Engine : 4 fonctions FFI, `no_std`/`no_alloc`, O(1). Forge : compilateur AOT, pipeline 6 étapes, `.kald` + `.lits`. Plage 1969–2399. Référence : `specification.md` v2.2.1, `liturgical-scheme.md`._
+_Architecture AOT-Only. Engine : 4 fonctions FFI, `no_std`/`no_alloc`, O(1). Forge : compilateur AOT, pipeline 6 étapes, `.kald` + `.lits`. Plage 1969–2399. Référence : `specification.md` v2.4.0, `liturgical-scheme.md` v1.5.0._
