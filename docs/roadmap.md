@@ -28,6 +28,17 @@
 | Dimanches du Temps Ordinaire (X–XXXIV)    | ⏳ À générer | Ancre `tempus_ordinarium` + `ordinal` — déblocage v1.3.3                       |
 | Christ-Roi + fin de cycle                 | ⏳ À générer | `domini_nostro_iesu_christi_regis_universi`                                    |
 
+### Points ouverts
+
+| #   | Sujet                                                                                     | Statut                                         |
+| --- | ----------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| 1   | Slug `in_ascensione_domini` vs `ascensio_domini`                                          | ⚠ En attente de confirmation définitive        |
+| 2   | Dimanches TO ordinals 1–9 (absorption)                                                    | ✅ Résolu par architecture — Ok(None) Étape 3  |
+| 3   | `in_commemoratione_omnium_fidelium_defunctorum` : `nature: commemoratio` vs `sollemnitas` | ⚠ À confirmer                                  |
+| 4   | `barnabae` : `memoria` vs `festum`                                                        | ⚠ À confirmer contre source primaire           |
+| 5   | `irenaei` : élévation de rang 2022                                                        | ⚠ À confirmer (festum ou memoria uniquement ?) |
+| 6   | `iosephi_opificis` : obligatoire ou ad libitum                                            | ⚠ À confirmer                                  |
+
 ### Décisions architecturales gelées
 
 - `transfers` interdit pour du calcul structurel — invariant permanent.
@@ -474,6 +485,15 @@ pub fn encode_flags(p: Precedence, c: Color, lp: LiturgicalPeriod, n: Nature) ->
 - Construction du `Header` v2.0 (64 octets)
 - Écriture séquentielle : Header + Data Body + Secondary Pool
 - Validation post-écriture : relecture du fichier produit via `kal_validate_header`
+
+**Obligations Forge sur les bits réservés — non vérifiées par l'Engine en lecture :**
+
+`kal_read_entry` ne valide pas le contenu sémantique des entrées (contrat spec §7.2). La correction des champs suivants est donc une **responsabilité exclusive de la Forge** à l'Étape 6 :
+
+- `flags & 0xC000 == 0` (bits [15:14] nuls) — vérification V9, `ForgeError::FlagsReservedBitSet`
+- `CalendarEntry._reserved == 0x00` — le champ est du padding ; la Forge l'écrit à zéro explicitement lors de la sérialisation LE (aucun code V associé, invariant de construction)
+
+Ces deux points ne donnent lieu à aucun test Engine — ils sont couverts par les tests Forge de l'Étape 6.
 
 **Production `.lits` (une par langue compilée) :**
 

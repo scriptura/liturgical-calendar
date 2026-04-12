@@ -2,13 +2,3 @@
 name = "liturgical-calendar-forge"
 version = "0.1.0"
 edition = "2021"
-
-[dependencies]
-liturgical-calendar-core = { path = "../liturgical-calendar-core", features = ["std"] }
-sha2 = { version = "0.10", default-features = false }
-serde = { version = "1", features = ["derive"] }
-serde_yaml = "0.9"
-regex = "1"
-
-[dev-dependencies]
-tempfile = "3.27.0"

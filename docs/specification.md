@@ -1293,6 +1293,15 @@ let entry_count = u32::from_le_bytes([
 
 Responsabilité de l'appelant : valider le fichier via `kal_validate_header` avant tout appel à `kal_read_entry`. L'Engine n'impose pas d'ordre d'appel — la défense en profondeur (`idx >= entry_count → KAL_ERR_INDEX_OOB`) couvre les cas de header corrompu ayant échappé à la validation.
 
+**Contrat explicite — champs non validés en lecture par `kal_read_entry` :**
+
+`kal_read_entry` est un projecteur de mémoire O(1). Il ne valide pas le contenu sémantique de l'entrée lue :
+
+- **`flags` bits [15:14]** : ces bits réservés sont définis comme devant être nuls (§3.4), mais `kal_read_entry` ne les vérifie pas et ne retourne aucun code d'erreur s'ils sont non nuls. La garantie est du côté de la **Forge** (validation V9, `ForgeError::FlagsReservedBitSet` à l'Étape 6). L'Engine fait confiance au `.kald` produit par une Forge conforme.
+- **`CalendarEntry._reserved`** : l'octet de padding à l'offset 7 est écrit à `0x00` par la Forge (stride 64-bit) mais n'est pas relu ni validé par `kal_read_entry`. Aucun code `KAL_ERR_*` n'est défini pour ce champ au niveau entrée.
+
+Ces deux non-validations sont **intentionnelles** — elles préservent le contrat O(1) et la séparation de responsabilité Forge/Engine. Ajouter ces contrôles dans `kal_read_entry` constituerait une violation architecturale.
+
 ### 7.3 `kal_read_secondary`
 
 ```c

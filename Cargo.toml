@@ -5,8 +5,6 @@ members = [
 ]
 resolver = "2"
 
-# INV-W1 : panic = "abort" déclaré ici (workspace root).
-# Les Cargo.toml membres sont ignorés pour ce champ.
 [profile.release]
 panic = "abort"
 
