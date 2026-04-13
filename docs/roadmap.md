@@ -1,7 +1,7 @@
-# Roadmap de Développement : Liturgical Calendar
+# Roadmap de Développement : Liturgical Calendar v2.2
 
-**Version** : 2.4.0  
-**Date de Révision** : 2026-04-12
+**Version** : 2.6.0  
+**Date de Révision** : 2026-04-10  
 **Méthodologie** : 3 jalons, chacun produisant un livrable binaire validable indépendamment  
 **Critères de Succès** : Conformité binaire Forge↔Engine · SHA-256 cross-platform · Fuzzing · CI 4 cibles
 
@@ -50,7 +50,9 @@
 
 ## Philosophie de la Roadmap
 
-**Architecture :** deux crates dans un workspace Cargo. `liturgical-calendar-core` (`no_std`, `no_alloc`) est un projecteur de mémoire O(1) — 4 fonctions FFI, zéro logique de domaine. `liturgical-calendar-forge` (`std`) est le compilateur AOT qui produit les artefacts `.kald` et `.lits` consommés par l'Engine.
+**Architecture :** deux crates dans un workspace Cargo. `liturgical-calendar-core` (`no_std`, `no_alloc`) est un projecteur de mémoire O(1) — 4 fonctions FFI, zéro logique de domaine, **agnostique du rite**. `liturgical-calendar-forge` (`std`) est le compilateur AOT multi-rite : il produit un `.kald` + N fichiers `.lits` autonomes par `CompilationTarget` (rite × juridiction).
+
+**Multi-rite ADR :** le corpus est organisé par rite (`corpus/romanus/`, `corpus/ambrosianus/`, …). Chaque rite a son propre espace de nommage FeastID et son propre `feast_registry.lock`. La Forge peut compiler plusieurs cibles en une seule invocation. L'Engine ne change pas d'un octet — il lit toujours un fichier unique pré-calculé.
 
 **Principe d'organisation :** chaque jalon produit un binaire ou ensemble de crates testables et validables en isolation. Aucune étape intermédiaire sans critère de sortie concret.
 
@@ -307,6 +309,10 @@ Les enums `Nature`, `Color`, `LiturgicalPeriod` dans `registry.rs` (côté Forge
 Toute désignation `primary` / `secondary` dans un slot DOY passe **exclusivement** par un `sort_unstable_by_key(|f| f.resolution_key())`. Aucun `if/else` conditionnel sur `Precedence`, `Cycle` ou `Temporality` n'est autorisé dans `resolution.rs` en dehors de la garde V7 (Passe 2) et du déclassement saisonnier (§3.4 spec). Toute déviation constitue une violation architecturale — le déterminisme bit-for-bit du `.kald` en dépend.
 
 `ResolutionKey` est définie dans `liturgical-calendar-forge/src/resolution.rs`. Elle n'appartient pas au Core — l'Engine ne trie jamais, il lit.
+
+**INV-FORGE-SCOPED-TRANSFERS — `transfers` localisé dans `history[]`**
+
+Le champ `transfers` appartient à chaque entrée `history[]`, pas à la racine du YAML (v2.5). Le `FeastVersionDef` porte `Vec<TransferRule>`. La Forge charge uniquement les transfers de l'entrée active pour l'année Y — jamais des entrées adjacentes.
 
 **INV-FORGE-ORDINAL — `ordinal` exclusif à `anchor: tempus_ordinarium`**
 
@@ -748,6 +754,6 @@ Serveur HTTP léger wrappant les 4 fonctions FFI de l'Engine. Endpoints : `GET /
 
 ---
 
-**Fin de la Roadmap**
+**Fin de la Roadmap v2.2**
 
-_Architecture AOT-Only. Engine : 4 fonctions FFI, `no_std`/`no_alloc`, O(1). Forge : compilateur AOT, pipeline 6 étapes, `.kald` + `.lits`. Plage 1969–2399. Référence : `specification.md` v2.4.0, `liturgical-scheme.md` v1.5.0._
+_Architecture AOT-Only multi-rite. Engine : 4 FFI, `no_std`/`no_alloc`, O(1), agnostique du rite. Forge : compilateur AOT 6 étapes, un `.kald` par CompilationTarget (rite × juridiction). Plage 1969–2399. Référence : `specification.md` v2.6.0, `liturgical-scheme.md` v1.7.0._

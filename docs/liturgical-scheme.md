@@ -1,10 +1,10 @@
-# Liturgical Scheme — Contrat de Données Amont
+# Liturgical Scheme v1.0 — Contrat de Données Amont
 
 **Statut** : Canonique / Source de Vérité YAML  
 **Scope** : `liturgical-calendar-forge` — Étapes 1 (Rule Parsing) et 2 (Canonicalization)  
-**Référence** : `specification.md` v2.4
-**Date de Révision** : 2026-04-12
-**Version** : 1.5.0
+**Référence** : `specification.md` v2.6.0  
+**Date de Révision** : 2026-04-10  
+**Version** : 1.7.0
 
 ---
 
@@ -51,63 +51,83 @@ Chaque fête liturgique est décrite dans un **fichier YAML indépendant**, nomm
 
 ### 1.2 Hiérarchie des Répertoires
 
+Le corpus est organisé par **rite** en premier niveau, puis par le triptyque `universale / nationalia / dioecesana` habituel. Chaque rite constitue un espace de nommage autonome : ses slugs, ses FeastIDs et ses artefacts compilés sont indépendants des autres rites.
+
 ```
-data/
-├── universale/
-│   ├── temporale/          ← Proprium de Tempore : fêtes à date mobile  (category = 0)
-│   │   ├── pascha.yaml
-│   │   ├── ascensio_domini.yaml
-│   │   ├── pentecostes.yaml
-│   │   ├── feria_iv_cinerum.yaml
-│   │   ├── dominica_in_palmis.yaml
-│   │   └── ...
-│   └── sanctorale/         ← Sanctorale universale : fêtes à date fixe  (category ≥ 1)
-│       ├── nativitas_domini.yaml
-│       ├── assumptio_bmv.yaml
-│       ├── omnium_sanctorum.yaml
+corpus/
+├── romanus/                        ← Rite romain (Novus Ordo, 1969+)
+│   ├── universale/
+│   │   ├── temporale/              ← Proprium de Tempore (category = 0)
+│   │   │   ├── dominica_resurrectionis.yaml
+│   │   │   ├── in_ascensione_domini.yaml
+│   │   │   ├── dominica_in_palmis_de_passione_domini.yaml
+│   │   │   └── ...
+│   │   └── sanctorale/             ← Sanctorale universale (category ≥ 1)
+│   │       ├── nativitas_domini.yaml
+│   │       ├── assumptio_bmv.yaml
+│   │       └── ...
+│   ├── nationalia/
+│   │   └── {ISO}/                  ← Code ISO 3166-1 alpha-2 (ex : FR, PL)
+│   │       ├── temporale/
+│   │       └── sanctorale/
+│   ├── dioecesana/
+│   │   └── {ID}/                   ← Identifiant diocésain (ex : PARIS)
+│   │       ├── temporale/
+│   │       └── sanctorale/
+│   ├── ordines/                    ← Ordres religieux (proprium interne au rite romain)
+│   │   └── {ORDO}/                 ← ex : praedicatorum, franciscanorum, benedictinorum
+│   │       ├── temporale/
+│   │       └── sanctorale/
+│   └── i18n/                       ← Dictionnaires textuels du rite romain
+│       ├── la/
+│       ├── fr/
 │       └── ...
-├── nationalia/
-│   └── {ISO}/              ← Code ISO 3166-1 alpha-2 (ex : FR, PL, DE)
-│       ├── temporale/      ← Proprium de Tempore national (peu fréquent)
-│       └── sanctorale/     ← Saints propres et surcharges nationales
-│           └── {slug}.yaml
-└── dioecesana/
-    └── {ID}/               ← Identifiant diocésain (ex : PARIS, LYON)
-        ├── temporale/
-        └── sanctorale/
-            └── {slug}.yaml
+├── ambrosianus/                    ← Rite ambrosien (Milan)
+│   ├── universale/
+│   │   ├── temporale/
+│   │   └── sanctorale/
+│   ├── dioecesana/
+│   │   └── MEDIOLANUM/
+│   └── i18n/
+│       ├── la/
+│       └── it/
+└── ...                             ← Autres rites futurs
 ```
 
 **Règles structurelles :**
 
-- `temporale/` accueille les fêtes déclarées avec un bloc `mobile` (anchor + offset). C'est le Proprium de Tempore — le cycle pascal et ses dépendances.
-- `sanctorale/` accueille les fêtes déclarées avec un bloc `date` (fixe). C'est le cycle annuel des saints et des solennités fixes.
-- La correspondance répertoire ↔ `category` est **documentaire, pas normative**. Le champ `category` reste déclaré explicitement dans chaque fichier YAML — un diocèse peut utiliser des catégories 2 ou 3 dans son `sanctorale/`.
-- Un fichier situé dans `nationalia/FR/sanctorale/nativitas_domini.yaml` est une **surcharge nationale** du slug `nativitas_domini` universel. Aucune redéclaration de `date` n'est requise si la date est héritée du scope universel.
+- Le rite est un **espace de nommage isolé**. Les FeastIDs alloués dans `romanus/` sont indépendants de ceux de `ambrosianus/`. Chaque rite possède son propre `feast_registry.lock`.
+- `temporale/` accueille les fêtes avec bloc `mobile:`. `sanctorale/` accueille les fêtes avec bloc `date:`.
+- `ordines/` héberge les propres des ordres religieux dans le cadre du rite romain. Un ordo utilise le scope `diocesan` (bits FeastID [15:14] = `10`) — il est modélisé comme une juridiction spéciale, pas comme un rite distinct. Le bit [15:14] = `11` est réservé pour un usage futur si un 4e scope devient nécessaire.
+- Les dictionnaires `i18n/` sont **par rite** — un même slug peut avoir un titre différent selon le rite (ex: une fête promue en Solennité dans le rite ambroisien peut avoir un titre enrichi).
+- Un fichier dans `nationalia/FR/sanctorale/` est une surcharge nationale du slug universel correspondant pour ce rite. Aucune redéclaration de `date` n'est requise si la temporalité est héritée.
 
 ### 1.3 Dérivation du Scope et de la Region depuis le Chemin
 
 Le **scope** et la **region** sont déduits du chemin du fichier. Ils ne sont **pas** répétés dans l'en-tête YAML — supprimer cette redondance est l'un des bénéfices de l'approche atomique.
 
-| Chemin                                 | Scope déduit | Region déduite |
-| -------------------------------------- | ------------ | -------------- |
-| `data/universale/**/{slug}.yaml`       | `universal`  | `null`         |
-| `data/nationalia/{ISO}/**/{slug}.yaml` | `national`   | `{ISO}`        |
-| `data/dioecesana/{ID}/**/{slug}.yaml`  | `diocesan`   | `{ID}`         |
+| Chemin                                          | Rite déduit | Scope déduit | Region / Ordo déduit |
+| ----------------------------------------------- | ----------- | ------------ | -------------------- |
+| `corpus/{rite}/universale/**/{slug}.yaml`       | `{rite}`    | `universal`  | `null`               |
+| `corpus/{rite}/nationalia/{ISO}/**/{slug}.yaml` | `{rite}`    | `national`   | `{ISO}`              |
+| `corpus/{rite}/dioecesana/{ID}/**/{slug}.yaml`  | `{rite}`    | `diocesan`   | `{ID}`               |
+| `corpus/{rite}/ordines/{ORDO}/**/{slug}.yaml`   | `{rite}`    | `diocesan`   | `{ORDO}`             |
 
-La Forge valide la cohérence path ↔ contenu lors de l'ingestion. Un fichier dont l'en-tête déclare explicitement un scope ou une region **contradictoire** avec son chemin est rejeté avec `ParseError::ScopePathMismatch { path, declared_scope }`.
+Le rite est déduit du premier segment du chemin relatif à `corpus/`. La Forge valide la cohérence path ↔ contenu. Un fichier dont le chemin déclare un rite incohérent avec la session de compilation est ignoré silencieusement (chaque session ne compile qu'un seul rite).
 
 ### 1.4 Ordre d'Ingestion (INV-FORGE-1)
 
-La Forge ingère les fichiers dans l'ordre suivant, sans exception :
+La Forge ingère les fichiers dans l'ordre suivant, sans exception. Tous les chemins sont relatifs à `corpus/{rite}/`.
 
 ```
-1. data/universale/temporale/    — triés lexicographiquement par nom de fichier
-2. data/universale/sanctorale/   — triés lexicographiquement par nom de fichier
-3. data/nationalia/{ISO}/temporale/   — si applicable, tri lex.
-4. data/nationalia/{ISO}/sanctorale/  — si applicable, tri lex.
-5. data/dioecesana/{ID}/temporale/    — si applicable, tri lex.
-6. data/dioecesana/{ID}/sanctorale/   — si applicable, tri lex.
+1. universale/temporale/            — tri lex.
+2. universale/sanctorale/           — tri lex.
+3. nationalia/{ISO}/temporale/      — si target inclut une région, tri lex.
+4. nationalia/{ISO}/sanctorale/     — si target inclut une région, tri lex.
+5. dioecesana/{ID}/temporale/       — si target inclut un diocèse, tri lex.
+6. dioecesana/{ID}/sanctorale/      — si target inclut un diocèse, tri lex.
+7. ordines/{ORDO}/temporale/        — si target inclut un ordo, tri lex.
+8. ordines/{ORDO}/sanctorale/       — si target inclut un ordo, tri lex.
 ```
 
 Le nommage slug (latin snake_case) garantit que l'ordre lexicographique des noms de fichiers est déterministe et reproductible. `fs::read_dir` n'étant pas ordonné, la Forge collecte les chemins, les trie, puis les ingère — identique à INV-FORGE-1 de la spec.
@@ -130,7 +150,10 @@ history:
     nature: sollemnitas
     color: albus
     season: tempus_nativitatis # Optionnel — voir §2.3
-    has_vigil_mass: false # Optionnel — défaut false. True pour les vigiles propres (Noël, Pâques).
+    has_vigil_mass: false # Optionnel — défaut false. True pour les vigiles propres.
+    transfers: # Optionnel, scoped à [from, to] — voir §2.4
+      - collides: <slug>
+        offset: <u32 ≥ 1> # OU date: OU mobile:
     # title : absent du YAML — défini dans i18n/la/nativitas_domini.yaml (§4.4)
 ```
 
@@ -161,19 +184,6 @@ feasts:
       offset: <integer> # Jours (signé). Interdit si anchor = tempus_ordinarium.
       ordinal: <1–34> # Index ordinal de semaine. Exclusif à anchor: tempus_ordinarium.
 
-    # Transferts déclaratifs — optionnel — voir §2.4
-    transfers:
-      - collides: <slug_concurrent> # Slug (= stem du fichier) de la fête en collision
-        offset: <u32 ≥ 1> # OU date: OU mobile: — les trois sont mutuellement exclusifs
-      - collides: <slug_concurrent>
-        date:
-          month: <1–12>
-          day: <1–31>
-      - collides: <slug_concurrent>
-        mobile: # Cible mobile — pré-résolue par la Forge à l'Étape 3
-          anchor: <anchor_id> # Ancre primitive uniquement (V-T5) — offset signé admis
-          offset: <integer> # Peut être négatif (transfert rétrograde)
-
     history: # Tableau ordonné des versions — voir §4
       - from: <year>
         to: <year|~>
@@ -182,6 +192,17 @@ feasts:
         color: <string>
         season: <string> # Optionnel — voir §2.3
         has_vigil_mass: <bool> # Optionnel, défaut false — voir §2.5
+        transfers: # Optionnel — voir §2.4 (scoped : actif pour [from, to])
+          - collides: <slug_concurrent>
+            offset: <u32 ≥ 1> # OU date: OU mobile: — mutuellement exclusifs
+          - collides: <slug_concurrent>
+            date:
+              month: <1–12>
+              day: <1–31>
+          - collides: <slug_concurrent>
+            mobile: # Cible mobile pré-résolue à l'Étape 3
+              anchor: <anchor_id> # Ancre primitive uniquement (V-T5)
+              offset: <integer> # Signé — négatif admis (transfert rétrograde)
         # Labels textuels (title, etc.) : externalisés dans i18n/{lang}/{slug}.yaml (§4.4)
 ```
 
@@ -265,22 +286,34 @@ Il peut être fourni explicitement pour les fêtes dont la saison est fixe indé
 
 ---
 
-## 2.4 Bloc `transfers` — Résolution Déclarative des Collisions
+## 2.4 Bloc `transfers` — Résolution Déclarative des Collisions (Scoped)
 
-Le bloc `transfers` est **optionnel**. Il déclare les règles de repli d'une fête lorsqu'elle entre en collision sur le même DOY avec une fête identifiée par son slug. Il est consommé **exclusivement par la Passe 3 de l'Étape 3 (Conflict Resolution)**.
+Le bloc `transfers` est **optionnel**. Il est désormais déclaré **à l'intérieur d'une entrée `history[]`**, ce qui le rend actif uniquement pour la plage d'années `[from, to]` de cette entrée. Cette portée temporelle (_scoping_) permet d'exprimer des règles de collision qui évoluent dans le temps, sans contaminer les périodes adjacentes.
 
-En l'absence de ce bloc, la Forge applique les règles générales de §3.2–§3.3 (Precedence, tiebreakers). En présence de ce bloc, les entrées `transfers` constituent une table de dispatch déclarative — aucun code impératif conditionnel dans la Forge pour les exceptions liturgiques.
+**Invariant de scope :** la Forge sélectionne l'entrée `history[]` active pour l'année Y (§4.2), puis charge son bloc `transfers` local. Aucun `transfers` d'une autre entrée `history[]` n'est consulté pour cette année. Un slug sans entrée `history[]` active pour l'année Y n'a pas de règle de transfert active.
 
-### Structure
+En l'absence de ce bloc dans l'entrée active, la Forge applique les règles générales de §3.2–§3.3 (Precedence, ResolutionKey, TransferQueue). En présence de ce bloc, les entrées `transfers` constituent une table de dispatch déclarative — aucun code impératif conditionnel dans la Forge pour les exceptions liturgiques.
+
+### Structure (scoped — dans history[])
 
 ```yaml
-transfers:
-  - collides: <slug_concurrent> # Slug (stem du fichier) de la fête déclenchante
-    offset: <uint> # Décalage relatif en jours (non signé, > 0) si collision
-  - collides: <slug_concurrent>
-    date: # Date fixe de repli si collision
-      month: <1–12>
-      day: <1–31>
+history:
+  - from: <year>
+    to: <year|~>
+    precedence: <0–12>
+    nature: <string>
+    color: <string>
+    transfers: # Scoped : actif seulement pour [from, to]
+      - collides: <slug_concurrent>
+        offset: <u32 ≥ 1> # OU date: OU mobile:
+      - collides: <slug_concurrent>
+        date:
+          month: <1–12>
+          day: <1–31>
+      - collides: <slug_concurrent>
+        mobile:
+          anchor: <anchor_id>
+          offset: <integer> # Signé — négatif admis
 ```
 
 ### Sémantique
@@ -294,71 +327,45 @@ transfers:
 
 **`offset`, `date` et `mobile` sont mutuellement exclusifs.** Une entrée déclarant plus d'une option est rejetée avec `ParseError::TransferAmbiguous`. Une entrée sans aucune option est invalide (`ParseError::TransferEmpty`).
 
-**Cas d'usage de `mobile` — transferts rétrogrades :** lorsque la cible de repli est antérieure en DOY à la fête déplacée (ex: Saint Joseph → samedi avant les Rameaux = pascha−8, qui peut être antérieur au 19 mars), `offset` positif est impossible. La cible `mobile` est pré-résolue par la Forge à l'**Étape 3** avant la Conflict Resolution, contournant l'invariant de monotonie de la `TransferQueue`. L'offset dans `mobile` peut être négatif.
+**Cas d'usage de `mobile` — transferts rétrogrades :** lorsque la cible de repli est antérieure en DOY à la fête déplacée (ex: Saint Joseph post-2008 → samedi avant les Rameaux = pascha−8, antérieur au 19 mars certaines années), `offset` positif est impossible. La cible `mobile` est pré-résolue par la Forge à l'**Étape 3** avant la Conflict Resolution.
 
 ### Invariants
 
-**Résolution au premier build :** le slug déclaré dans `collides` doit être résolvable dans le `FeastRegistry` au moment de la Passe 3. Un slug inconnu (absent du corpus compilé, faute de frappe) est rejeté avec `ParseError::UnknownCollidesTarget { slug, collides }`. Ce n'est pas un avertissement — une règle de transfert non résolvable est une règle silencieusement morte.
+**Scope temporel strict :** un bloc `transfers` déclaré dans l'entrée `history[]` de `[from: 2008, to: ~]` n'est jamais consulté pour les années antérieures à 2008, même si le slug existe depuis 1969. L'isolation est garantie par la résolution de l'entrée active (§4.2).
 
-**Résolution à un seul niveau :** si la date de repli (via `offset` ou `date`) atterrit elle-même sur un slot occupé, la Forge applique les règles générales de Precedence (§3.2). Elle **ne réapplique pas** le bloc `transfers` de la fête déplacée sur sa nouvelle date. Tout atterrissage sur un slot occupé après déplacement produit un `ConflictWarning`, pas une erreur fatale.
+**Résolvabilité de `collides` :** le slug déclaré dans `collides` doit être présent dans le `FeastRegistry` au terme de l'Étape 1. Un slug inconnu est rejeté avec `ParseError::UnknownCollidesTarget { slug, collides }` — règle morte → erreur fatale.
 
-**Unicité de la clé `collides` :** deux entrées `transfers` ne peuvent référencer le même slug concurrent. Violation → `ParseError::TransferDuplicateCollides { slug, collides }`.
+**Résolution à un seul niveau :** la Forge ne réapplique pas le bloc `transfers` de la fête déplacée sur sa nouvelle date. Un atterrissage sur un slot occupé produit un `ConflictWarning`.
 
-### Exemple — Sainte Famille
+**Unicité de `collides` au sein d'une entrée `history[]` :** deux entrées `transfers` d'un même bloc ne peuvent référencer le même slug concurrent. Violation → `ParseError::TransferDuplicateCollides { slug, collides }`. Deux entrées `history[]` différentes peuvent référencer le même `collides` sans conflit — leurs scopes sont disjoints.
 
-La Sainte Famille est normalement le dimanche dans l'Octave de Noël. Si Noël tombe un dimanche (et qu'il n'y a pas d'octave), la Sainte Famille est transférée au 30 décembre.
+### Exemple — Sainte Famille (transfers scoped depuis 1969)
 
 ```yaml
-# data/universale/temporale/sanctae_familiae.yaml
+# data/universale/temporale/sanctae_familiae_iesu_mariae_et_ioseph.yaml
 version: 1
 category: 0
 mobile:
-  anchor: pascha
-  offset: -7 # exemple fictif — la vraie règle est relative à Noël
+  anchor: nativitas
+  offset: 0
 
-transfers:
-  - collides: nativitas_domini
-    date:
-      month: 12
-      day: 30
-```
-
-### Exemple — Sacré-Cœur et Corpus Christi
-
-```yaml
-transfers:
-  - collides: sacratissimi_cordis_iesu
-    offset: 6 # déplacement vers l'avant — V-T4 : offset ≥ 1
-  - collides: corpus_christi
-    date:
-      month: 6
-      day: 25
-```
-
-### Exemple — Saint Joseph (transfert rétrograde)
-
-Règle liturgique : si le 19 mars tombe pendant la Semaine Sainte, Saint Joseph est déplacé au samedi précédant les Rameaux (pascha − 8). Ce DOY peut être inférieur au 19 mars — impossible avec `offset` direct.
-
-```yaml
-# data/universale/sanctorale/iosephi.yaml
-version: 1
-category: 1
-date:
-  month: 3
-  day: 19
-transfers:
-  - collides: dominica_in_palmis # Dimanche des Rameaux = pascha − 7
-    mobile:
-      anchor: pascha
-      offset: -8 # Samedi avant les Rameaux — offset signé, peut être rétrograde
 history:
   - from: 1969
-    precedence: 1
+    to: ~
+    precedence: 2
     nature: sollemnitas
     color: albus
+    season: tempus_nativitatis
+    transfers:
+      - collides: nativitas_domini # Si Noël est un dimanche, pas d'Octave disponible
+        date:
+          month: 12
+          day: 30
 ```
 
-La Forge résout `pascha − 8` à l'Étape 3 et stocke le DOY cible dans `PreResolvedTransfers`. La Passe 3 de l'Étape 4 insère directement Saint Joseph à ce DOY, sans passer par la `TransferQueue`.
+### Exemple — Saint Joseph (scoping temporel 1969 vs 2008)
+
+Voir §4.4 pour le YAML canonique complet de `iosephi_sponsi_beatae_mariae_virginis.yaml`.
 
 ---
 
@@ -623,6 +630,8 @@ history:
     color: <string> # Voir §6.3.
     season: <string> # Optionnel — voir §2.3 et §6.4.
     has_vigil_mass: <bool># Optionnel, défaut false — voir §2.5.
+    transfers: # Optionnel — scoped : actif uniquement pour [from, to] — voir §2.4.
+      - collides: <slug> # Options : offset, date, mobile — mutuellement exclusifs.
     # Aucun champ textuel (title, name…) : labels externalisés dans i18n/{lang}/{slug}.yaml (§4.4)
 ```
 
@@ -769,21 +778,24 @@ Cette clé est **implicite** — jamais déclarée explicitement. Elle est recon
 
 ### 5.1 Définition des Scopes
 
-| Scope       | Description                                               | Champ `region`                      | Bits FeastID        |
-| ----------- | --------------------------------------------------------- | ----------------------------------- | ------------------- |
-| `universal` | Calendarium Generale Romanum                              | `null`                              | bits [15:14] = `00` |
-| `national`  | Calendrier national approuvé par la Conférence épiscopale | Code ISO 3166-1 alpha-2 (ex: `FR`)  | bits [15:14] = `01` |
-| `diocesan`  | Propre diocésain                                          | Identifiant diocésain (ex: `PARIS`) | bits [15:14] = `10` |
+| Scope       | Description                                        | Champ `region`                                               | Bits FeastID        |
+| ----------- | -------------------------------------------------- | ------------------------------------------------------------ | ------------------- |
+| `universal` | Proprium universale du rite                        | `null`                                                       | bits [15:14] = `00` |
+| `national`  | Proprium national approuvé                         | Code ISO 3166-1 alpha-2 (ex: `FR`)                           | bits [15:14] = `01` |
+| `diocesan`  | Propre diocésain **ou** propre d'un ordo religieux | Identifiant diocésain ou ordo (ex: `PARIS`, `praedicatorum`) | bits [15:14] = `10` |
+| _(réservé)_ | Usage futur (ex: 4e niveau de juridiction)         | —                                                            | bits [15:14] = `11` |
 
-Le bit [15:14] est encodé dans les 2 bits supérieurs du FeastID u16. Le bit [13:12] encode la `category`. Les bits [11:0] encodent la séquence (4096 valeurs par (scope, category)).
+Le bit [15:14] est encodé dans les 2 bits supérieurs du FeastID u16. Ces bits sont **relatifs au rite compilé** — deux rites différents peuvent produire le même FeastID `0x0001` pour des fêtes différentes. Les artefacts `.kald` sont autonomes et non inter-opérables entre rites.
 
 ### 5.2 Règles de Fusion
 
-La Forge fusionne les fichiers YAML dans l'ordre de priorité suivant, du moins prioritaire au plus prioritaire :
+La Forge fusionne les fichiers YAML dans l'ordre de priorité suivant, du moins prioritaire au plus prioritaire, **au sein d'un même rite** :
 
 ```
-universale/  <  nationalia/{ISO}/  <  dioecesana/{ID}/
+universale/  <  nationalia/{ISO}/  <  dioecesana/{ID}/  <  ordines/{ORDO}/
 ```
+
+L'ordo est le scope le plus local — il prime sur le diocèse, qui prime sur le national, qui prime sur l'universel. Cette hiérarchie est **interne au rite** : aucune fusion inter-rites n'est effectuée.
 
 **Règle de résolution des collisions (même slug) :**
 
@@ -816,64 +828,91 @@ history:
 
 ### 5.3 Interface de Configuration de la Forge
 
-Avec l'approche atomique, la Forge reçoit un répertoire racine (`corpus_root`) et une cible de compilation (`CompilationTarget`). Elle découvre elle-même les fichiers à ingérer en parcourant la hiérarchie de §1.2 dans l'ordre de §1.4.
+La Forge reçoit un répertoire racine (`corpus_root`) et une `CompilationTarget` qui spécifie le rite et la profondeur de juridiction. Elle produit un `.kald` autonome par contexte. La notion de rite est un paramètre de compilation — l'Engine ne la connaît pas.
 
 ```rust
-// Interface Forge — configuration de la session de compilation
+// Interface Forge — configuration d'une session de compilation
 struct ForgeSession {
-    corpus_root: PathBuf,          // Racine du corpus : contient universale/, nationalia/, dioecesana/
-    target:      CompilationTarget, // Portée de la compilation
-    output:      PathBuf,          // Chemin de sortie .kald
-    range:       RangeInclusive<u16>, // Ex : 1969..=2399
+    corpus_root: PathBuf,             // Racine du corpus : contient romanus/, ambrosianus/, …
+    target:      CompilationTarget,   // Rite + portée juridictionnelle
+    output_kald: PathBuf,             // Chemin de sortie .kald (un par contexte)
+    output_lits: Vec<(String, PathBuf)>, // (lang, path) — un .lits par langue
+    range:       RangeInclusive<u16>, // 1969..=2399
 }
 
-enum CompilationTarget {
-    Universal,                     // Calendarium Generale uniquement
-    National  { region: String },  // Universal + national/{region}
-    Diocesan  { region: String, diocese: String }, // Universal + national + dioecesana/{diocese}
+/// Rite liturgique — premier niveau de l'espace de nommage corpus.
+enum Rite {
+    Romanus,      // "romanus/"    — Rite romain Novus Ordo (1969+)
+    Ambrosianus,  // "ambrosianus/" — Rite ambrosien
+    // … futurs rites
 }
+
+/// Profondeur juridictionnelle au sein du rite.
+enum Jurisdiction {
+    Universal,                            // universale/ uniquement
+    National  { region: String },         // + nationalia/{region}/
+    Diocesan  { region: String, diocese: String }, // + dioecesana/{diocese}/
+    Ordo      { region: Option<String>, ordo: String }, // + ordines/{ordo}/
+                                          // (region optionnel : un ordo peut être universel)
+}
+
+struct CompilationTarget {
+    rite:         Rite,
+    jurisdiction: Jurisdiction,
+}
+```
+
+**Nommage canonique des artefacts de sortie :**
+
+```
+romanus_universale.kald
+romanus_fr.kald
+romanus_fr_paris.kald
+romanus_praedicatorum.kald
+ambrosianus_universale.kald
+```
+
+Les fichiers `.lits` associés suivent le même préfixe :
+
+```
+romanus_fr.la.lits
+romanus_fr.fr.lits
 ```
 
 **Algorithme de découverte des fichiers :**
 
-```
-fn discover_files(root: &Path, target: &CompilationTarget) -> Vec<PathBuf> {
+```rust
+fn discover_files(corpus_root: &Path, target: &CompilationTarget) -> Vec<PathBuf> {
+    let rite_root = corpus_root.join(target.rite.as_str()); // ex: corpus/romanus/
     let mut files = vec![];
 
-    // 1. Universale — toujours chargé
-    collect_yaml_sorted(root / "universale" / "temporale",  &mut files);
-    collect_yaml_sorted(root / "universale" / "sanctorale", &mut files);
+    // 1–2. Universale — toujours chargé
+    collect_yaml_sorted(&rite_root.join("universale/temporale"),  &mut files);
+    collect_yaml_sorted(&rite_root.join("universale/sanctorale"), &mut files);
 
-    // 2. Nationale — si target est National ou Diocesan
-    if let Some(region) = target.region() {
-        collect_yaml_sorted(root / "nationalia" / region / "temporale",  &mut files);
-        collect_yaml_sorted(root / "nationalia" / region / "sanctorale", &mut files);
+    // 3–4. National
+    if let Some(region) = target.jurisdiction.region() {
+        collect_yaml_sorted(&rite_root.join("nationalia").join(region).join("temporale"),  &mut files);
+        collect_yaml_sorted(&rite_root.join("nationalia").join(region).join("sanctorale"), &mut files);
     }
 
-    // 3. Diocésaine — si target est Diocesan
-    if let Some(diocese) = target.diocese() {
-        collect_yaml_sorted(root / "dioecesana" / diocese / "temporale",  &mut files);
-        collect_yaml_sorted(root / "dioecesana" / diocese / "sanctorale", &mut files);
+    // 5–6. Diocésain
+    if let Some(diocese) = target.jurisdiction.diocese() {
+        collect_yaml_sorted(&rite_root.join("dioecesana").join(diocese).join("temporale"),  &mut files);
+        collect_yaml_sorted(&rite_root.join("dioecesana").join(diocese).join("sanctorale"), &mut files);
+    }
+
+    // 7–8. Ordo
+    if let Some(ordo) = target.jurisdiction.ordo() {
+        collect_yaml_sorted(&rite_root.join("ordines").join(ordo).join("temporale"),  &mut files);
+        collect_yaml_sorted(&rite_root.join("ordines").join(ordo).join("sanctorale"), &mut files);
     }
 
     files
 }
-
-fn collect_yaml_sorted(dir: &Path, out: &mut Vec<PathBuf>) {
-    // fs::read_dir n'est pas ordonné — collecte puis tri lex. (INV-FORGE-1)
-    if !dir.exists() { return; }
-    let mut entries: Vec<_> = fs::read_dir(dir)
-        .unwrap()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension() == Some("yaml".as_ref()))
-        .map(|e| e.path())
-        .collect();
-    entries.sort();
-    out.extend(entries);
-}
 ```
 
-Un répertoire absent (ex: `nationalia/FR/temporale/` vide ou inexistant) n'est pas une erreur.
+Un répertoire absent est ignoré silencieusement — un ordo n'a pas nécessairement de `temporale/`.
 
 ---
 
@@ -1147,7 +1186,7 @@ Violation → `RegistryError::InvalidPrecedenceValue(u8)` (valeurs 13–15 rése
 
 ### Groupe E — Validité du Bloc `transfers` (V-T1, V-T2, V-T3, V-T4, V-T5)
 
-Ces validations sont appliquées durant l'**Étape 1 (Rule Parsing)**, lors de la désérialisation du bloc `transfers`. V-T5 est vérifiée à l'Étape 1 (ancre admissible) ; la résolution effective des cibles `mobile` a lieu à l'**Étape 3** (Canonicalization). Tout échec est fatal.
+Ces validations sont appliquées durant l'**Étape 1 (Rule Parsing)**, lors de la désérialisation de chaque bloc `transfers` trouvé dans les entrées `history[]`. Le bloc `transfers` est désormais **scoped** à son entrée `history[]` — les validations V-T1 à V-T5 s'appliquent indépendamment à chaque bloc. V-T5 est vérifiée à l'Étape 1 (ancre admissible) ; la résolution effective des cibles `mobile` a lieu à l'**Étape 3** par entrée active. Tout échec est fatal.
 
 **V-T1 — Exclusivité `offset` / `date` / `mobile` dans chaque entrée**
 
@@ -1171,15 +1210,16 @@ Le slug déclaré dans `collides` doit être présent dans le `FeastRegistry` au
 
 Violation → `ParseError::UnknownCollidesTarget { slug, collides }`
 
-**V-T3 — Unicité de `collides` au sein du bloc**
+**V-T3 — Unicité de `collides` au sein d'un même bloc `transfers`**
 
 ```
-∀ (t1, t2) ∈ transfers² : t1 ≠ t2 ⟹ t1.collides ≠ t2.collides
+∀ (t1, t2) ∈ transfers_entry_h² : t1 ≠ t2 ⟹ t1.collides ≠ t2.collides
 ```
 
-Deux entrées référençant le même slug concurrent produiraient un comportement non déterministe (laquelle appliquer ?). La première en position YAML n'a pas de sémantique canonique.
+La contrainte est **scoped à une entrée `history[]`** : deux entrées `history[]` de plages disjointes peuvent référencer le même `collides` sans violation — leurs scopes sont mutuellement exclusifs. Au sein d'un seul bloc `transfers`, deux entrées référençant le même slug concurrent produiraient un comportement non déterministe.
 
-Violation → `ParseError::TransferDuplicateCollides { slug, collides }`
+Violation → `ParseError::TransferDuplicateCollides { slug, from, collides }`
+(le champ `from` de l'entrée `history[]` est inclus dans le variant pour localiser l'erreur)
 
 **V-T4 — Offset direct strictement positif**
 
@@ -1346,6 +1386,93 @@ Voir §4.3 pour l'exemple complet avec béatification (2011–2013) et canonisat
 
 **Résolution pour l'année 2009 :** aucune entrée ne contient 2009 → `Ok(None)` → fête absente du dataset 2009.
 
+**Résolution pour l'année 2009 :** aucune entrée ne contient 2009 → `Ok(None)` → fête absente du dataset 2009.
+
+---
+
+### 4.4 Exemple Canonique — Saint Joseph (Scoped Transfers v1.6.0)
+
+Ce cas illustre le pattern de scoping temporel : deux périodes liturgiques distinctes avec des règles de collision différentes. La fête est `iosephi_sponsi_beatae_mariae_virginis`, Solennité au 19 mars.
+
+**Règles liturgiques :**
+
+- 1969–2007 : si le 19 mars tombe pendant la Semaine Sainte, la TransferQueue générique déplace la fête vers l'avant (comportement implicite — pas de `transfers` déclaré).
+- 2008+ : décision papale — si le 19 mars tombe pendant la Semaine Sainte, la fête est déplacée au **samedi avant les Rameaux** (pascha − 8), c'est-à-dire vers l'arrière. Transfert rétrograde → impossible avec `offset` positif → `mobile` requis.
+
+```yaml
+# data/universale/sanctorale/iosephi_sponsi_beatae_mariae_virginis.yaml
+# slug = "iosephi_sponsi_beatae_mariae_virginis" — déduit du stem
+# scope = universal, region = null — déduits du chemin
+
+version: 1
+category: 1
+date:
+  month: 3
+  day: 19 # DOY = 60 + 18 = 78
+
+history:
+  # ─── Période 1969–2007 ──────────────────────────────────────────────────────
+  # Pas de transfers déclaré.
+  # Collision avec Semaine Sainte → TransferQueue générique vers l'avant.
+  # Collision avec dominica_in_palmis (Prec 2) : iosephi (Prec 4) est évincé,
+  # TransferQueue cherche doy+1 libre. Résolution automatique, conforme.
+  - from: 1969
+    to: 2007
+    precedence: 4
+    nature: sollemnitas
+    color: albus
+
+  # ─── Période 2008+ ──────────────────────────────────────────────────────────
+  # Règle papale : transfert rétrograde vers pascha − 8 si Semaine Sainte.
+  # transfers scoped à [2008, ~] — invisible aux années 1969–2007.
+  - from: 2008
+    to: ~
+    precedence: 4
+    nature: sollemnitas
+    color: albus
+    transfers:
+      # Collision avec le Dimanche des Rameaux (pascha − 7, Prec 2)
+      - collides: dominica_in_palmis
+        mobile:
+          anchor: pascha
+          offset: -8 # Samedi avant les Rameaux — rétrograde, offset signé
+
+      # Collision avec Lundi Saint (pascha − 6, Prec 3)
+      - collides: feria_ii_in_hebdomada_sancta
+        mobile:
+          anchor: pascha
+          offset: -8 # même cible canonique
+
+      # Collision avec Mardi Saint (pascha − 5, Prec 3)
+      - collides: feria_iii_in_hebdomada_sancta
+        mobile:
+          anchor: pascha
+          offset: -8
+
+      # Collision avec Mercredi Saint (pascha − 4, Prec 3)
+      - collides: feria_iv_in_hebdomada_sancta
+        mobile:
+          anchor: pascha
+          offset: -8
+
+      # Note : Jeudi, Vendredi, Samedi Saints (Triduum, Prec 0) — éviction
+      # par Precedence 0 < 4. Iosephi évincé, TransferQueue...
+      # mais le Triduum tombe au-delà du 19 mars → ce cas n'existe pas
+      # astronomiquement (Pâques ∈ [22 mars, 25 avril], Triduum ∈ [19–21 avr typique]).
+      # Le 19 mars ne peut pas tomber dans le Triduum — pas de règle nécessaire.
+```
+
+**Vérification de couverture : années post-2008 où le 19 mars tombe en Semaine Sainte**
+
+| Année | Date 19 mars | Pâques    | Semaine Sainte ?     | Collision                    | Cible pascha−8 |
+| ----- | ------------ | --------- | -------------------- | ---------------------------- | -------------- |
+| 2008  | Mer 19 mars  | 23 mars   | Oui (Mercredi Saint) | feria_iv_in_hebdomada_sancta | Sam 15 mars    |
+| 2013  | Mar 19 mars  | 31 mars   | Oui (Lundi Saint)    | feria_ii_in_hebdomada_sancta | Sam 23 mars    |
+| 2024  | Mar 19 mars  | 31 mars   | Oui (Lundi Saint)    | feria_ii_in_hebdomada_sancta | Sam 23 mars    |
+| 2029  | Lun 19 mars  | 1er avril | Oui (Dim. Rameaux)   | dominica_in_palmis           | Sam 24 mars    |
+
+> Le cas Triduum (Jeudi–Samedi Saints) ne peut se produire car il faudrait Pâques entre le 23 et le 26 mars, ce qui est astronomiquement possible mais le 19 mars tomberait alors avant le Triduum — vérification à faire sur toute la plage 1969–2399 lors du test de couverture.
+
 ---
 
 ### 9.4 Surcharge Diocésaine
@@ -1448,10 +1575,12 @@ Avant de soumettre un fichier YAML à la Forge :
 - [ ] `from` ≥ 1969 et `to` ≤ 2399 pour toutes les entrées `history`
 - [ ] `from` est renseigné explicitement si différent de 1969
 - [ ] `id` absent sauf besoin documenté d'un identifiant stable
-- [ ] Si bloc `transfers` présent : chaque entrée déclare exactement **une** option parmi `offset`, `date`, `mobile` — les trois sont mutuellement exclusifs (V-T1)
-- [ ] Si `transfers.mobile` utilisé : `anchor` est une ancre primitive admise (V-T5) ; `mobile.offset` peut être négatif (transfert rétrograde)
-- [ ] Si bloc `transfers` présent : chaque valeur de `collides` est un slug existant dans le corpus
-- [ ] Si bloc `transfers` présent : chaque valeur de `collides` est unique dans le bloc
+- [ ] Le bloc `transfers`, s'il est présent, se trouve **à l'intérieur** d'une entrée `history[]` — jamais à la racine du YAML (v1.6.0)
+- [ ] Chaque entrée `transfers` déclare exactement **une** option parmi `offset`, `date`, `mobile` — mutuellement exclusifs (V-T1)
+- [ ] Si `mobile` utilisé : `anchor` est une ancre primitive admise, pas `tempus_ordinarium` (V-T5) ; `mobile.offset` peut être négatif
+- [ ] Chaque valeur de `collides` est un slug existant dans le corpus (V-T2)
+- [ ] Les valeurs de `collides` sont uniques **au sein du même bloc `transfers`** — deux entrées `history[]` différentes peuvent réutiliser le même `collides` (V-T3)
+- [ ] Si plusieurs entrées `history[]` déclarent des `transfers` pour le même `collides`, leurs plages `[from, to]` sont disjointes (garanti par V2d si les plages elles-mêmes sont disjointes)
 - [ ] Les fêtes au 29 février (`date.month: 2, date.day: 29`) sont intentionnelles — Padding Entry les années non-bissextiles
 
 **Dictionnaire i18n (à livrer avec tout nouveau fichier YAML)**
@@ -1463,4 +1592,6 @@ Avant de soumettre un fichier YAML à la Forge :
 
 ---
 
-**Fin du Contrat de Données Amont**
+**Fin du Contrat de Données Amont v1.3.3 — ❄️ GELÉ**
+
+**Fin du Contrat de Données Amont v1.7.0**
