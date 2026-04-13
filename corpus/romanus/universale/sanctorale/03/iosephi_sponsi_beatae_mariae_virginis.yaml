@@ -3,9 +3,46 @@ category: 1
 date:
   month: 3
   day: 19
+
 history:
+  # L'éviction par les dimanches de Carême (Prec 2) est déléguée au moteur.
+  # La TransferQueue alloue DOY+1 de manière déterministe en O(N) local.
   - from: 1969
+    to: 2007
+    precedence: 4
+    nature: sollemnitas
+    color: albus
+
+  - from: 2008
     to: ~
     precedence: 4
     nature: sollemnitas
     color: albus
+    transfers:
+      # Activation d'une table de dispatch locale pour dérogation rétrograde.
+      # Les cibles 'mobile' sont pré-calculées à l'Étape 3 avant résolution des conflits.
+      # Pâques le 26 mars -> 19 mars = Rameaux
+      - collides: dominica_in_palmis
+        mobile:
+          anchor: pascha
+          offset: -8
+      # Pâques le 25 mars -> 19 mars = Lundi Saint
+      - collides: feria_ii_in_hebdomada_sancta
+        mobile:
+          anchor: pascha
+          offset: -8
+      # Pâques le 24 mars -> 19 mars = Mardi Saint
+      - collides: feria_iii_in_hebdomada_sancta
+        mobile:
+          anchor: pascha
+          offset: -8
+      # Pâques le 23 mars -> 19 mars = Mercredi Saint
+      - collides: feria_iv_in_hebdomada_sancta
+        mobile:
+          anchor: pascha
+          offset: -8
+      # Pâques le 22 mars (date la plus hâtive possible) -> 19 mars = Jeudi Saint
+      - collides: feria_v_in_cena_domini
+        mobile:
+          anchor: pascha
+          offset: -8
