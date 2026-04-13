@@ -73,6 +73,17 @@ impl CalendarEntry {
     pub fn nature(&self) -> Result<Nature, DomainError> {
         Nature::try_from_u8(((self.flags >> 11) & 0x0007) as u8)
     }
+
+    /// `true` si ce soir civil commence les Premières Vêpres de la fête de DOY+1.
+    /// Consulter `kal_read_entry(year, doy+1)` pour les détails de cette fête.
+    pub fn has_vesperae_i(&self) -> bool {
+        self.flags & (1 << 14) != 0
+    }
+
+    /// `true` si ce soir civil a une Messe de Vigile propre pour la fête de DOY+1.
+    pub fn has_vigilia(&self) -> bool {
+        self.flags & (1 << 15) != 0
+    }
 }
 
 impl Default for CalendarEntry {
