@@ -2,3 +2,15 @@
 name = "liturgical-calendar-forge"
 version = "0.1.0"
 edition = "2021"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+sha2 = "0.10"
+
+[features]
+std = []
+gen-headers = ["cbindgen"]
+
+[build-dependencies]
+cbindgen = { version = "0.26", optional = true }
