@@ -1,0 +1,11 @@
+version: 1
+category: 3
+mobile:
+  anchor: in_epiphania_domini
+  offset: 1
+history:
+  - from: 1969
+    to: ~
+    precedence: 3
+    nature: festum
+    color: albus

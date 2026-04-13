@@ -1,0 +1,18 @@
+version: 1
+category: 3
+mobile:
+  anchor: nativitas_domini
+  offset: 7
+history:
+  - from: 1969
+    to: ~
+    precedence: 3
+    nature: festum
+    color: albus
+    transfers:
+      # Court-circuit si Noël tombe un dimanche (offset 7 pointerait hors octave)
+      # Logique de collision : Si le 25/12 est un dimanche, transfert au 30/12. Sinon, dimanche dans l'octave.
+      - collides: dominica_infra_octavam_nativitatis
+        date:
+          month: 12
+          day: 30
