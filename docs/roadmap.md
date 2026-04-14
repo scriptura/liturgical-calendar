@@ -1,7 +1,7 @@
-# Roadmap de Développement : Liturgical Calendar v2.2
+# Roadmap de Développement : Liturgical Calendar
 
 **Version** : 2.6.0  
-**Date de Révision** : 2026-04-10  
+**Date de Révision** : 2026-04-14
 **Méthodologie** : 3 jalons, chacun produisant un livrable binaire validable indépendamment  
 **Critères de Succès** : Conformité binaire Forge↔Engine · SHA-256 cross-platform · Fuzzing · CI 4 cibles
 

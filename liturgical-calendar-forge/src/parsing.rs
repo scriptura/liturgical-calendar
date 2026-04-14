@@ -150,7 +150,7 @@ fn parse_season(s: &str) -> Result<LiturgicalPeriod, RegistryError> {
 // ---------------------------------------------------------------------------
 
 fn validate_date(slug: &str, month: u8, day: u8) -> Result<(), ParseError> {
-    if month < 1 || month > 12 {
+    if !(1..=12).contains(&month) {
         return Err(ParseError::InvalidDate { slug: slug.to_string(), month, day });
     }
     let max_day: u8 = match month {
@@ -159,7 +159,7 @@ fn validate_date(slug: &str, month: u8, day: u8) -> Result<(), ParseError> {
         2 => 29, // Feb 29 admis (l'année n'est pas connue à ce stade)
         _ => unreachable!(),
     };
-    if day < 1 || day > max_day {
+    if !(1..=max_day).contains(&day) {
         return Err(ParseError::InvalidDate { slug: slug.to_string(), month, day });
     }
     Ok(())
@@ -185,7 +185,7 @@ fn parse_mobile_temporality(slug: &str, m: &YamlMobile) -> Result<Temporality, F
         }
         let ordinal = m.ordinal
             .ok_or_else(|| ParseError::MissingOrdinal { slug: slug.to_string() })?;
-        if ordinal < 1 || ordinal > 34 {
+        if !(1..=34).contains(&ordinal) {
             return Err(ParseError::OrdinalOutOfRange { slug: slug.to_string(), ordinal }.into());
         }
         Ok(Temporality::Ordinal { ordinal })
@@ -260,12 +260,12 @@ fn parse_history(slug: &str, entries: &[YamlHistoryEntry])
     }
 
     // V2d — chevauchement temporel : tri par `from`, détection intervalle
-    check_temporal_overlap(slug, &result)?;
+    check_temporal_overlap(&result)?;
 
     Ok(result)
 }
 
-fn check_temporal_overlap(slug: &str, entries: &[FeastHistoryEntry])
+fn check_temporal_overlap(entries: &[FeastHistoryEntry])
     -> Result<(), ForgeError>
 {
     let mut sorted: Vec<&FeastHistoryEntry> = entries.iter().collect();
@@ -534,13 +534,6 @@ fn validate_collides_targets(registry: &FeastRegistry) -> Result<(), ForgeError>
 mod tests {
     use super::*;
 
-    fn minimal_yaml(extra: &str) -> String {
-        format!(
-            "version: 1\ncategory: 1\ndate:\n  month: 3\n  day: 19\n\
-             history:\n  - precedence: 1\n    nature: sollemnitas\n    color: white\n{extra}"
-        )
-    }
-
     // --- V6 ---
 
     #[test]
@@ -569,18 +562,35 @@ mod tests {
 
     #[test]
     fn v4a_offset_on_ordinal_anchor() {
-        let yaml = "version: 1\ncategory: 0\n\
-            mobile:\n  anchor: tempus_ordinarium\n  offset: 7\n  ordinal: 3\n\
-            history:\n  - precedence: 1\n    nature: sollemnitas\n    color: white\n";
+        let yaml = r#"
+version: 1
+category: 0
+mobile:
+  anchor: tempus_ordinarium
+  offset: 7
+  ordinal: 3
+history:
+  - precedence: 1
+    nature: sollemnitas
+    color: white
+"#;
         let err = parse_feast_from_yaml("test_slug", Scope::Universal, yaml).unwrap_err();
         assert!(matches!(err, ForgeError::Parse(ParseError::OffsetOnOrdinalAnchor { .. })));
     }
 
     #[test]
     fn v4a_ordinal_on_non_ordinal_anchor() {
-        let yaml = "version: 1\ncategory: 0\n\
-            mobile:\n  anchor: pascha\n  ordinal: 1\n\
-            history:\n  - precedence: 1\n    nature: sollemnitas\n    color: white\n";
+        let yaml = r#"
+version: 1
+category: 0
+mobile:
+  anchor: pascha
+  ordinal: 1
+history:
+  - precedence: 1
+    nature: sollemnitas
+    color: white
+"#;
         let err = parse_feast_from_yaml("test_slug", Scope::Universal, yaml).unwrap_err();
         assert!(matches!(err, ForgeError::Parse(ParseError::OrdinalOnNonOrdinalAnchor { .. })));
     }
@@ -589,8 +599,17 @@ mod tests {
 
     #[test]
     fn v_natura_memoria_invalid_precedence() {
-        let yaml = "version: 1\ncategory: 1\ndate:\n  month: 5\n  day: 1\n\
-            history:\n  - precedence: 9\n    nature: memoria\n    color: white\n";
+        let yaml = r#"
+version: 1
+category: 1
+date:
+  month: 5
+  day: 1
+history:
+  - precedence: 9
+    nature: memoria
+    color: white
+"#;
         let err = parse_feast_from_yaml("test_slug", Scope::Universal, yaml).unwrap_err();
         assert!(matches!(
             err,
@@ -602,8 +621,17 @@ mod tests {
 
     #[test]
     fn v_natura_memoria_valid_precedence_11() {
-        let yaml = "version: 1\ncategory: 1\ndate:\n  month: 5\n  day: 1\n\
-            history:\n  - precedence: 11\n    nature: memoria\n    color: white\n";
+        let yaml = r#"
+version: 1
+category: 1
+date:
+  month: 5
+  day: 1
+history:
+  - precedence: 11
+    nature: memoria
+    color: white
+"#;
         assert!(parse_feast_from_yaml("test_slug", Scope::Universal, yaml).is_ok());
     }
 
@@ -611,20 +639,38 @@ mod tests {
 
     #[test]
     fn v_vigilia_non_sollemnitas() {
-        let yaml = "version: 1\ncategory: 1\ndate:\n  month: 5\n  day: 1\n\
-            history:\n  - precedence: 11\n    nature: memoria\n    color: white\n\
-              has_vigil_mass: true\n";
+        // has_vigil_mass: true sur une natura != sollemnitas → VigiliaNonSollemnitas
+        let yaml = r#"
+version: 1
+category: 1
+date:
+  month: 5
+  day: 1
+history:
+  - precedence: 11
+    nature: memoria
+    color: white
+    has_vigil_mass: true
+"#;
         let err = parse_feast_from_yaml("test_slug", Scope::Universal, yaml).unwrap_err();
         assert!(matches!(err, ForgeError::Parse(ParseError::VigiliaNonSollemnitas { .. })));
     }
 
-    // --- Desugaring pentecostes ---
+    // --- Desugaring pentecostes (temporalité) ---
 
     #[test]
     fn desugaring_pentecostes_temporality() {
-        let yaml = "version: 1\ncategory: 0\n\
-            mobile:\n  anchor: pentecostes\n  offset: 0\n\
-            history:\n  - precedence: 1\n    nature: sollemnitas\n    color: white\n";
+        let yaml = r#"
+version: 1
+category: 0
+mobile:
+  anchor: pentecostes
+  offset: 0
+history:
+  - precedence: 1
+    nature: sollemnitas
+    color: white
+"#;
         let def = parse_feast_from_yaml("test_slug", Scope::Universal, yaml).unwrap();
         match def.temporality {
             Temporality::Mobile { anchor, offset } => {
@@ -639,11 +685,24 @@ mod tests {
 
     #[test]
     fn transfer_ambiguous() {
-        // offset ET mobile simultanément
-        let yaml = "version: 1\ncategory: 1\ndate:\n  month: 3\n  day: 19\n\
-            transfers:\n  - collides: other_slug\n    offset: 2\n\
-              mobile:\n        anchor: pascha\n        offset: 3\n\
-            history:\n  - precedence: 1\n    nature: sollemnitas\n    color: white\n";
+        // offset ET mobile simultanément dans le même transfer
+        let yaml = r#"
+version: 1
+category: 1
+date:
+  month: 3
+  day: 19
+transfers:
+  - collides: other_slug
+    offset: 2
+    mobile:
+      anchor: pascha
+      offset: 3
+history:
+  - precedence: 1
+    nature: sollemnitas
+    color: white
+"#;
         let err = parse_feast_from_yaml("test_slug", Scope::Universal, yaml).unwrap_err();
         assert!(matches!(err, ForgeError::Parse(ParseError::TransferAmbiguous { .. })));
     }
@@ -652,10 +711,22 @@ mod tests {
 
     #[test]
     fn transfer_mobile_invalid_anchor_tempus_ordinarium() {
-        let yaml = "version: 1\ncategory: 1\ndate:\n  month: 3\n  day: 19\n\
-            transfers:\n  - collides: other_slug\n\
-              mobile:\n      anchor: tempus_ordinarium\n      offset: 0\n\
-            history:\n  - precedence: 1\n    nature: sollemnitas\n    color: white\n";
+        let yaml = r#"
+version: 1
+category: 1
+date:
+  month: 3
+  day: 19
+transfers:
+  - collides: other_slug
+    mobile:
+      anchor: tempus_ordinarium
+      offset: 0
+history:
+  - precedence: 1
+    nature: sollemnitas
+    color: white
+"#;
         let err = parse_feast_from_yaml("test_slug", Scope::Universal, yaml).unwrap_err();
         assert!(matches!(
             err,
@@ -667,9 +738,20 @@ mod tests {
 
     #[test]
     fn transfer_offset_zero_rejected() {
-        let yaml = "version: 1\ncategory: 1\ndate:\n  month: 3\n  day: 19\n\
-            transfers:\n  - collides: other_slug\n    offset: 0\n\
-            history:\n  - precedence: 1\n    nature: sollemnitas\n    color: white\n";
+        let yaml = r#"
+version: 1
+category: 1
+date:
+  month: 3
+  day: 19
+transfers:
+  - collides: other_slug
+    offset: 0
+history:
+  - precedence: 1
+    nature: sollemnitas
+    color: white
+"#;
         let err = parse_feast_from_yaml("test_slug", Scope::Universal, yaml).unwrap_err();
         assert!(matches!(
             err,
@@ -681,10 +763,22 @@ mod tests {
 
     #[test]
     fn desugaring_pentecostes_in_transfer_mobile() {
-        let yaml = "version: 1\ncategory: 1\ndate:\n  month: 3\n  day: 19\n\
-            transfers:\n  - collides: other_slug\n\
-              mobile:\n      anchor: pentecostes\n      offset: 3\n\
-            history:\n  - precedence: 1\n    nature: sollemnitas\n    color: white\n";
+        let yaml = r#"
+version: 1
+category: 1
+date:
+  month: 3
+  day: 19
+transfers:
+  - collides: other_slug
+    mobile:
+      anchor: pentecostes
+      offset: 3
+history:
+  - precedence: 1
+    nature: sollemnitas
+    color: white
+"#;
         let def = parse_feast_from_yaml("test_slug", Scope::Universal, yaml).unwrap();
         let t = &def.transfers[0];
         match &t.target {
@@ -700,8 +794,17 @@ mod tests {
 
     #[test]
     fn unsupported_schema_version() {
-        let yaml = "version: 2\ncategory: 1\ndate:\n  month: 1\n  day: 1\n\
-            history:\n  - precedence: 1\n    nature: sollemnitas\n    color: white\n";
+        let yaml = r#"
+version: 2
+category: 1
+date:
+  month: 1
+  day: 1
+history:
+  - precedence: 1
+    nature: sollemnitas
+    color: white
+"#;
         let err = parse_feast_from_yaml("test_slug", Scope::Universal, yaml).unwrap_err();
         assert!(matches!(err, ForgeError::Parse(ParseError::UnsupportedSchemaVersion(2))));
     }

@@ -1,9 +1,9 @@
-# Liturgical Scheme v1.0 — Contrat de Données Amont
+# Liturgical Scheme — Contrat de Données Amont
 
 **Statut** : Canonique / Source de Vérité YAML  
 **Scope** : `liturgical-calendar-forge` — Étapes 1 (Rule Parsing) et 2 (Canonicalization)  
 **Référence** : `specification.md` v2.6.0  
-**Date de Révision** : 2026-04-10  
+**Date de Révision** : 2026-04-14
 **Version** : 1.7.0
 
 ---

@@ -1,11 +1,11 @@
-# Spécification Technique : Liturgical Calendar v2.2
+# Spécification Technique : Liturgical Calendar
 
 **Statut** : Canonique / Ready for Implementation  
 **Architecture** : AOT-Only / DOD / FFI-First  
 **Workspace** : `liturgical-calendar-forge` (std) / `liturgical-calendar-core` (no_std, no_alloc)  
 **Langage Domaine** : Latin (Strictement Canonique)  
 **Déterminisme** : Bit-for-bit reproductible  
-**Date de Révision** : 2026-04-10  
+**Date de Révision** : 2026-04-14  
 **Version** : 2.6.0
 
 ---
