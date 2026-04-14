@@ -2,11 +2,12 @@ version: 1
 category: 0
 mobile:
   anchor: pascha
-  offset: +69
+  offset: 69
 history:
-  - from: 1969
-    to: ~
-    precedence: 11
+  - from: 1996
+    precedence: 10 # Correct : Mémoire obligatoire (Général)
     nature: memoria
-    color: albus
-    season: tempus_ordinarium
+  - from: 1969
+    to: 1995
+    precedence: 12 # Historique : Était facultative avant 1996
+    nature: memoria

@@ -209,15 +209,19 @@ fn resolve_mobile_transfer_targets(
     let mut result = BTreeMap::new();
 
     for feast in registry.iter() {
-        for transfer in &feast.transfers {
-            if let TransferTarget::Mobile { anchor, offset } = &transfer.target {
-                let anchor_doy = anchors.get(anchor.as_str())
-                    .ok_or_else(|| ForgeError::UnresolvedAnchor { anchor: anchor.clone() })?;
-                let doy_dst = (*anchor_doy as i32 + offset) as u16;
-                result.insert(
-                    (feast.slug.clone(), transfer.collides.clone()),
-                    doy_dst,
-                );
+        for entry in &feast.history {
+            for transfer in &entry.transfers {
+                if let TransferTarget::Mobile { anchor, offset } = &transfer.target {
+                    let anchor_doy = anchors.get(anchor.as_str())
+                        .ok_or_else(|| ForgeError::UnresolvedAnchor { anchor: anchor.clone() })?;
+                    let doy_dst = (*anchor_doy as i32 + offset) as u16;
+                    // Clé : (slug_fête, slug_collides) — dernière écriture gagne si
+                    // plusieurs tranches history déclarent le même collides (résolution Session B).
+                    result.insert(
+                        (feast.slug.clone(), transfer.collides.clone()),
+                        doy_dst,
+                    );
+                }
             }
         }
     }
@@ -358,23 +362,23 @@ mod tests {
         // Pâques 2016 = 27 mars = MONTH_STARTS[2] + 26 = 60 + 26 = 86
         // pascha 2016 = DOY 86 → cible = 86 - 8 = 78 (19 mars = DOY 78)
 
-        let yaml_iosephi = "\
+        let yaml_iosephi = r#"
 version: 1
 category: 1
 date:
   month: 3
   day: 19
-transfers:
-  - collides: dominica_in_palmis
-    mobile:
-      anchor: pascha
-      offset: -8
 history:
   - precedence: 1
     nature: sollemnitas
     color: white
-";
-        let yaml_palmis = "\
+    transfers:
+      - collides: dominica_in_palmis
+        mobile:
+          anchor: pascha
+          offset: -8
+"#;
+        let yaml_palmis = r#"
 version: 1
 category: 0
 mobile:
@@ -384,7 +388,7 @@ history:
   - precedence: 1
     nature: sollemnitas
     color: red
-";
+"#;
 
         let mut registry = FeastRegistry::new();
         let def_iosephi = parse_feast_from_yaml("iosephi", Scope::Universal, yaml_iosephi).unwrap();

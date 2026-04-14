@@ -36,8 +36,8 @@ pub enum ParseError {
     TransferEmpty { slug: String, collides: String },
     /// V-T2 — collides référence un slug absent du registry
     UnknownCollidesTarget { slug: String, collides: String },
-    /// V-T3 — collides dupliqué dans la liste transfers
-    TransferDuplicateCollides { slug: String, collides: String },
+    /// V-T3 — collides dupliqué dans la liste transfers d'une entrée history
+    TransferDuplicateCollides { slug: String, from: u16, collides: String },
     /// V-T4 — offset direct == 0 (u32, valeur invalide)
     TransferOffsetNotPositive { slug: String, collides: String, offset: u32 },
     /// V-T5 — anchor mobile de transfer n'est pas une ancre primitive

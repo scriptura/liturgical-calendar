@@ -89,15 +89,18 @@ pub struct TransferDef {
 // FeastHistoryEntry — une tranche temporelle d'un feast
 // ---------------------------------------------------------------------------
 
+/// Correspondance avec `FeastVersionDef` du schème v1.7.0.
 #[derive(Debug, Clone)]
 pub struct FeastHistoryEntry {
-    pub from:          u16,
-    pub to:            u16,
-    pub precedence:    u8,
-    pub nature:        Nature,
-    pub color:         Color,
-    pub season:        Option<LiturgicalPeriod>,
+    pub from:           u16,
+    pub to:             u16,
+    pub precedence:     u8,
+    pub nature:         Nature,
+    pub color:          Color,
+    pub season:         Option<LiturgicalPeriod>,
     pub has_vigil_mass: bool,
+    /// Règles de transfert scoped à cette tranche temporelle (vide si absent dans le YAML)
+    pub transfers:      Vec<TransferDef>,
 }
 
 // ---------------------------------------------------------------------------
@@ -113,7 +116,6 @@ pub struct FeastDef {
     /// Identifiant numérique optionnel (Martyrologium Romanum)
     pub id:          Option<u16>,
     pub temporality: Temporality,
-    pub transfers:   Vec<TransferDef>,
     pub history:     Vec<FeastHistoryEntry>,
 }
 

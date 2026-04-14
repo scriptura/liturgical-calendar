@@ -1,12 +1,12 @@
 version: 1
-category: 0
+category: 1
 mobile:
   anchor: pascha
-  offset: +56
+  # Dimanche après la Pentecôte (49 + 7)
+  offset: 56
 history:
   - from: 1969
     to: ~
-    precedence: 4
+    precedence: 2
     nature: sollemnitas
     color: albus
-    season: tempus_ordinarium

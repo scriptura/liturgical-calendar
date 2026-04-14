@@ -2,7 +2,7 @@ version: 1
 category: 0
 mobile:
   anchor: pascha
-  offset: +49
+  offset: 49
 history:
   - from: 1969
     to: ~

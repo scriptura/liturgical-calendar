@@ -21,7 +21,6 @@ struct YamlFeast {
     id:        Option<u16>,
     date:      Option<YamlDate>,
     mobile:    Option<YamlMobile>,
-    transfers: Option<Vec<YamlTransfer>>,
     history:   Vec<YamlHistoryEntry>,
 }
 
@@ -63,6 +62,7 @@ struct YamlHistoryEntry {
     color:          String,
     season:         Option<String>,
     has_vigil_mass: Option<bool>,
+    transfers:      Option<Vec<YamlTransfer>>,  // scoped à cette tranche temporelle
 }
 
 // ---------------------------------------------------------------------------
@@ -252,21 +252,31 @@ fn parse_history(slug: &str, entries: &[YamlHistoryEntry])
             }.into());
         }
 
+        // V-T* — transfers scoped à cette entrée history
+        let transfers = entry.transfers
+            .as_deref()
+            .map(|ts| parse_transfers(slug, from, ts))
+            .transpose()?
+            .unwrap_or_default();
+
         result.push(FeastHistoryEntry {
             from, to,
             precedence: entry.precedence,
             nature, color, season, has_vigil_mass,
+            transfers,
         });
     }
 
     // V2d — chevauchement temporel : tri par `from`, détection intervalle
-    check_temporal_overlap(&result)?;
+    check_temporal_overlap(slug, &result)?;
 
     Ok(result)
 }
 
-fn check_temporal_overlap(entries: &[FeastHistoryEntry])
+fn check_temporal_overlap(_slug: &str, entries: &[FeastHistoryEntry])
     -> Result<(), ForgeError>
+// TODO: slug dans error ? RegistryError::TemporalOverlap ne porte pas de champ slug (spec actuelle).
+// Le paramètre est conservé pour cohérence d'appel depuis parse_history.
 {
     let mut sorted: Vec<&FeastHistoryEntry> = entries.iter().collect();
     sorted.sort_by_key(|e| e.from);
@@ -282,7 +292,7 @@ fn check_temporal_overlap(entries: &[FeastHistoryEntry])
 // Parsing transfers (V-T1..V-T5, desucrage pentecostes dans mobile)
 // ---------------------------------------------------------------------------
 
-fn parse_transfers(slug: &str, transfers: &[YamlTransfer])
+fn parse_transfers(slug: &str, from: u16, transfers: &[YamlTransfer])
     -> Result<Vec<TransferDef>, ForgeError>
 {
     let mut result: Vec<TransferDef> = Vec::with_capacity(transfers.len());
@@ -290,10 +300,11 @@ fn parse_transfers(slug: &str, transfers: &[YamlTransfer])
     let mut seen: BTreeSet<&str> = BTreeSet::new();
 
     for t in transfers {
-        // V-T3 — unicité de collides
+        // V-T3 — unicité de collides dans cette tranche temporelle
         if !seen.insert(t.collides.as_str()) {
             return Err(ParseError::TransferDuplicateCollides {
-                slug:    slug.to_string(),
+                slug:     slug.to_string(),
+                from,
                 collides: t.collides.clone(),
             }.into());
         }
@@ -382,12 +393,7 @@ pub fn parse_feast_from_yaml(
         (None, Some(m)) => parse_mobile_temporality(slug, m)?,
     };
 
-    let history   = parse_history(slug, &yaml.history)?;
-    let transfers = yaml.transfers
-        .as_deref()
-        .map(|ts| parse_transfers(slug, ts))
-        .transpose()?
-        .unwrap_or_default();
+    let history = parse_history(slug, &yaml.history)?;
 
     Ok(FeastDef {
         slug:        slug.to_string(),
@@ -395,7 +401,6 @@ pub fn parse_feast_from_yaml(
         category:    yaml.category,
         id:          yaml.id,
         temporality,
-        transfers,
         history,
     })
 }
@@ -514,12 +519,14 @@ pub fn ingest_corpus(data_dir: &Path) -> Result<FeastRegistry, ForgeError> {
 
 fn validate_collides_targets(registry: &FeastRegistry) -> Result<(), ForgeError> {
     for feast in registry.iter() {
-        for transfer in &feast.transfers {
-            if !registry.contains(&transfer.collides) {
-                return Err(ParseError::UnknownCollidesTarget {
-                    slug:    feast.slug.clone(),
-                    collides: transfer.collides.clone(),
-                }.into());
+        for entry in &feast.history {
+            for transfer in &entry.transfers {
+                if !registry.contains(&transfer.collides) {
+                    return Err(ParseError::UnknownCollidesTarget {
+                        slug:    feast.slug.clone(),
+                        collides: transfer.collides.clone(),
+                    }.into());
+                }
             }
         }
     }
@@ -685,23 +692,23 @@ history:
 
     #[test]
     fn transfer_ambiguous() {
-        // offset ET mobile simultanément dans le même transfer
+        // offset ET mobile simultanément dans le même transfer (scoped history)
         let yaml = r#"
 version: 1
 category: 1
 date:
   month: 3
   day: 19
-transfers:
-  - collides: other_slug
-    offset: 2
-    mobile:
-      anchor: pascha
-      offset: 3
 history:
   - precedence: 1
     nature: sollemnitas
     color: white
+    transfers:
+      - collides: other_slug
+        offset: 2
+        mobile:
+          anchor: pascha
+          offset: 3
 "#;
         let err = parse_feast_from_yaml("test_slug", Scope::Universal, yaml).unwrap_err();
         assert!(matches!(err, ForgeError::Parse(ParseError::TransferAmbiguous { .. })));
@@ -717,15 +724,15 @@ category: 1
 date:
   month: 3
   day: 19
-transfers:
-  - collides: other_slug
-    mobile:
-      anchor: tempus_ordinarium
-      offset: 0
 history:
   - precedence: 1
     nature: sollemnitas
     color: white
+    transfers:
+      - collides: other_slug
+        mobile:
+          anchor: tempus_ordinarium
+          offset: 0
 "#;
         let err = parse_feast_from_yaml("test_slug", Scope::Universal, yaml).unwrap_err();
         assert!(matches!(
@@ -744,13 +751,13 @@ category: 1
 date:
   month: 3
   day: 19
-transfers:
-  - collides: other_slug
-    offset: 0
 history:
   - precedence: 1
     nature: sollemnitas
     color: white
+    transfers:
+      - collides: other_slug
+        offset: 0
 "#;
         let err = parse_feast_from_yaml("test_slug", Scope::Universal, yaml).unwrap_err();
         assert!(matches!(
@@ -769,18 +776,19 @@ category: 1
 date:
   month: 3
   day: 19
-transfers:
-  - collides: other_slug
-    mobile:
-      anchor: pentecostes
-      offset: 3
 history:
   - precedence: 1
     nature: sollemnitas
     color: white
+    transfers:
+      - collides: other_slug
+        mobile:
+          anchor: pentecostes
+          offset: 3
 "#;
         let def = parse_feast_from_yaml("test_slug", Scope::Universal, yaml).unwrap();
-        let t = &def.transfers[0];
+        // transfers scoped à history[0]
+        let t = &def.history[0].transfers[0];
         match &t.target {
             TransferTarget::Mobile { anchor, offset } => {
                 assert_eq!(anchor, "pascha");
@@ -807,5 +815,76 @@ history:
 "#;
         let err = parse_feast_from_yaml("test_slug", Scope::Universal, yaml).unwrap_err();
         assert!(matches!(err, ForgeError::Parse(ParseError::UnsupportedSchemaVersion(2))));
+    }
+
+    // --- Iosephi — transfers scoped (schème v1.7.0) ---
+
+    const YAML_IOSEPHI: &str = r#"
+version: 1
+category: 1
+date:
+  month: 3
+  day: 19
+
+history:
+  - from: 1969
+    to: 2007
+    precedence: 4
+    nature: sollemnitas
+    color: albus
+
+  - from: 2008
+    precedence: 4
+    nature: sollemnitas
+    color: albus
+    transfers:
+      - collides: dominica_in_palmis
+        mobile:
+          anchor: pascha
+          offset: -8
+      - collides: feria_ii_in_hebdomada_sancta
+        mobile:
+          anchor: pascha
+          offset: -8
+      - collides: feria_iii_in_hebdomada_sancta
+        mobile:
+          anchor: pascha
+          offset: -8
+      - collides: feria_iv_in_hebdomada_sancta
+        mobile:
+          anchor: pascha
+          offset: -8
+"#;
+
+    #[test]
+    fn parse_iosephi_scoped_transfers() {
+        // V-T2 (collides targets) est post-ingestion : non exécutée ici
+        let feast = parse_feast_from_yaml(
+            "iosephi_sponsi_beatae_mariae_virginis",
+            Scope::Universal,
+            YAML_IOSEPHI,
+        ).expect("parse doit réussir");
+
+        assert_eq!(feast.history.len(), 2);
+
+        let v1969 = &feast.history[0];
+        assert_eq!(v1969.from, 1969);
+        assert_eq!(v1969.to, 2007);
+        assert!(v1969.transfers.is_empty(), "période 1969–2007 sans transfers");
+
+        let v2008 = &feast.history[1];
+        assert_eq!(v2008.from, 2008);
+        assert_eq!(v2008.to, 2399); // to absent → défaut
+        assert_eq!(v2008.transfers.len(), 4, "4 collides en Semaine Sainte");
+
+        for t in &v2008.transfers {
+            match &t.target {
+                TransferTarget::Mobile { anchor, offset } => {
+                    assert_eq!(anchor, "pascha");
+                    assert_eq!(*offset, -8i32);
+                }
+                _ => panic!("attendu TransferTarget::Mobile"),
+            }
+        }
     }
 }

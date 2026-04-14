@@ -2,7 +2,7 @@ version: 1
 category: 0
 mobile:
   anchor: pascha
-  offset: +50
+  offset: 50
 history:
   - from: 2018
     to: ~

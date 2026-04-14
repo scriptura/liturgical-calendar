@@ -1,12 +1,12 @@
 version: 1
-category: 0
+category: 1
 mobile:
   anchor: pascha
-  offset: +68
+  # Vendredi après le 2ème dimanche après la Pentecôte (63 + 5)
+  offset: 68
 history:
   - from: 1969
     to: ~
-    precedence: 4
+    precedence: 2
     nature: sollemnitas
     color: albus
-    season: tempus_ordinarium
