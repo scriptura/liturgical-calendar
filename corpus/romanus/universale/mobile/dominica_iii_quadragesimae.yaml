@@ -5,7 +5,6 @@ mobile:
   offset: -28
 history:
   - from: 1969
-    to: ~
     precedence: 2
     nature: feria
     color: violaceus

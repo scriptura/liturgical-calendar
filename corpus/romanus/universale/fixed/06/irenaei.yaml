@@ -10,7 +10,6 @@ history:
     nature: memoria
     color: rubeus
   - from: 2022 # ajout du titre de Docteur de l'Église
-    to: ~
     precedence: 11
     nature: memoria
     color: rubeus

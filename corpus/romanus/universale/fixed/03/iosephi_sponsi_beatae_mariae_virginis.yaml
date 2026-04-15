@@ -14,7 +14,6 @@ history:
     color: albus
 
   - from: 2008
-    to: ~
     precedence: 4
     nature: sollemnitas
     color: albus

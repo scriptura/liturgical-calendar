@@ -5,7 +5,6 @@ date:
   day: 28
 history:
   - from: 1987
-    to: ~
     precedence: 11
     nature: memoria
     color: rubeus

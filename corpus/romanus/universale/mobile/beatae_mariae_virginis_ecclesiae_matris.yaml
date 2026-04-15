@@ -5,7 +5,6 @@ mobile:
   offset: 50
 history:
   - from: 2018
-    to: ~
     precedence: 11
     nature: memoria
     color: albus

@@ -5,7 +5,6 @@ mobile:
   offset: -7
 history:
   - from: 1969
-    to: ~
     precedence: 2
     nature: dominica
     color: violaceus

@@ -1,0 +1,12 @@
+version: 1
+category: 0
+date:
+  month: 8
+  day: 15
+history:
+  - from: 1969
+    precedence: 4
+    nature: sollemnitas
+    color: albus
+    # "Assomption de la Vierge Marie" => "Assomption de la Vierge Marie, Patronne principale de la France"
+    # Vœu de Louis XIII

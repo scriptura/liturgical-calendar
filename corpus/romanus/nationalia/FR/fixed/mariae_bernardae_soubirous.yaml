@@ -1,0 +1,12 @@
+version: 1
+category: 3
+date:
+  month: 2
+  day: 18
+  # 18 février, date des apparitions de la Vierge Marie à Bernadette Soubirous
+  # 16 avril, date de sa mort
+history:
+  - from: 1969
+    precedence: 11
+    nature: memoria
+    color: albus

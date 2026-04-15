@@ -5,7 +5,6 @@ mobile:
   offset: -2
 history:
   - from: 1969
-    to: ~
     precedence: 0
     nature: feria
     color: rubeus

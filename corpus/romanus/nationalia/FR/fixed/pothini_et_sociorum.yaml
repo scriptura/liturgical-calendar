@@ -1,10 +1,10 @@
 version: 1
-category: 1
+category: 3
 date:
-  month: 10
-  day: 7
+  month: 6
+  day: 2
 history:
   - from: 1969
     precedence: 11
     nature: memoria
-    color: albus
+    color: rubeus

@@ -5,7 +5,6 @@ mobile:
   ordinal: 10
 history:
   - from: 1969
-    to: ~
     precedence: 7
     nature: feria
     color: viridis

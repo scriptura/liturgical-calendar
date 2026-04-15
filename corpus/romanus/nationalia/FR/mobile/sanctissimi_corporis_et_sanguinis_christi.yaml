@@ -2,13 +2,4 @@ version: 1
 category: 0
 mobile:
   anchor: pascha
-  # Offset 63 pour la France (Dimanche)
-  # (Note : offset 60 dans le reste du monde, pour le Jeudi)
   offset: 63
-history:
-  - from: 1969
-    to: ~
-    precedence: 4
-    nature: sollemnitas
-    color: albus
-    season: tempus_ordinarium

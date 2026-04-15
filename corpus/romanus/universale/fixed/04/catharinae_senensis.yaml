@@ -10,7 +10,6 @@ history:
     nature: memoria
     color: albus
   - from: 1970
-    to: ~
     precedence: 8
     nature: festum
     color: albus
