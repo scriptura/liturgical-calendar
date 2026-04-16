@@ -183,6 +183,18 @@ pub struct SeasonBoundaries {
 }
 
 impl SeasonBoundaries {
+    pub fn compute(year: u16) -> Self {
+        let easter = compute_easter(year);
+        Self {
+            adventus:      resolve_adventus(year),
+            nativitas:     resolve_nativitas(year),
+            epiphania:     resolve_epiphania(year),
+            ash_wednesday: easter.saturating_sub(46),
+            palm_sunday:   easter.saturating_sub(7),
+            easter,
+            pentecost:     easter + 49,
+        }
+    }
     /// Période liturgique opérationnelle pour un DOY donné, dans l'année courante.
     ///
     /// Hypothèse : `epiphania` = DOY de la fête telle que résolue par `resolve_epiphania`.
@@ -283,7 +295,7 @@ pub fn canonicalize_year(year: u16, registry: &FeastRegistry)
     -> Result<CanonicalizedYear, ForgeError>
 {
     let anchors              = build_anchor_table(year);
-    let season_boundaries    = SeasonBoundaries::for_year(year);
+    let season_boundaries    = SeasonBoundaries::compute(year);
     let pre_resolved_transfers = resolve_mobile_transfer_targets(registry, &anchors)?;
 
     Ok(CanonicalizedYear { year, anchors, season_boundaries, pre_resolved_transfers })

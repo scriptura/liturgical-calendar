@@ -89,7 +89,7 @@ pub(crate) fn encode_flags(
 /// - Les bits [14:15] de `flags` sont laissés à 0 — `vespers_lookahead_pass` les calcule ensuite.
 ///
 /// `pool` est partagé entre toutes les années pour la déduplication inter-années.
-pub fn generate_year(
+pub(crate) fn generate_year(
     resolved:          ResolvedCalendar,
     pool:              &mut PoolBuilder,
     season_boundaries: &SeasonBoundaries,
@@ -167,41 +167,32 @@ pub fn generate_year(
 ///
 /// `next_year_jan1` : premier slot de l'année suivante, pour DOY=365 → DOY+1.
 /// Absent pour la dernière année du corpus (2399) — bits [14:15] laissés à 0.
-pub fn vespers_lookahead_pass(
-    entries:         &mut [CalendarEntry; 366],
-    next_year_jan1:  Option<&CalendarEntry>,
+pub(crate) fn vespers_lookahead_pass(
+    entries:        &mut [CalendarEntry; 366],
+    next_year_jan1: Option<&CalendarEntry>,
 ) {
     for doy in 0u16..=365u16 {
-        let tomorrow: &CalendarEntry = if doy < 365 {
-            &entries[doy as usize + 1]
+        // Extraire les valeurs scalaires de `tomorrow` — libère le borrow immuable
+        // avant la mutation de `entries[doy]`.
+        let (tomorrow_prec, tomorrow_has_vigil): (u8, bool) = if doy < 365 {
+            let t = &entries[doy as usize + 1];
+            ((t.flags & 0x0F) as u8, t.flags & (1 << 15) != 0)
         } else {
             match next_year_jan1 {
-                Some(e) => e,
-                None    => continue, // 31 déc 2399 — aucun DOY+1, bits conservés à 0.
+                Some(e) => ((e.flags & 0x0F) as u8, e.flags & (1 << 15) != 0),
+                None    => continue, // 31 déc 2399 — bits conservés à 0.
             }
         };
 
-        // Premières Vêpres : Solennités (Precedence ≤ 4) et Dimanches (Precedence = 7).
-        let tomorrow_prec = (tomorrow.flags & 0x0F) as u8;
         let has_first_vespers = tomorrow_prec <= 4 || tomorrow_prec == 7;
-        if !has_first_vespers {
-            continue;
-        }
+        if !has_first_vespers { continue; }
 
-        // Les Secondes Vêpres de today priment si today est de rang ≥ tomorrow.
-        // Valeur numérique inférieure = rang liturgique supérieur.
         let today_prec = (entries[doy as usize].flags & 0x0F) as u8;
-        if today_prec <= tomorrow_prec {
-            continue; // Secondes Vêpres de today l'emportent.
-        }
+        if today_prec <= tomorrow_prec { continue; }
 
-        // HAS_VESPERAE_I — bit 14.
-        entries[doy as usize].flags |= 1 << 14;
-
-        // HAS_VIGILIA — bit 15 reporté si la fête de demain déclare has_vigil_mass.
-        // Le bit 15 de `tomorrow` a été posé par encode_flags lors de generate_year.
-        if tomorrow.flags & (1 << 15) != 0 {
-            entries[doy as usize].flags |= 1 << 15;
+        entries[doy as usize].flags |= 1 << 14; // HAS_VESPERAE_I
+        if tomorrow_has_vigil {
+            entries[doy as usize].flags |= 1 << 15; // HAS_VIGILIA reporté
         }
     }
 }

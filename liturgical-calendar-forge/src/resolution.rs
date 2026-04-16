@@ -20,58 +20,128 @@
 //!   CanonicalizedYear::pre_resolved_transfers : BTreeMap<(String,String), u16>
 //!   SeasonBoundaries::period_of(&self, doy: u16) -> LiturgicalPeriod
 
+//! Étape 4 — Conflict Resolution : pipeline 5 passes.
+
 #![allow(missing_docs)]
 
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 
-use liturgical_calendar_core::{Color, LiturgicalPeriod, Nature};
-
-use crate::{
-    canonicalization::{is_leap_year, resolve_tempus_ordinarium, CanonicalizedYear, MONTH_STARTS},
-    error::ForgeError,
-    registry::{FeastRegistry, TransferTarget},
+use liturgical_calendar_core::{
+    Color as CoreColor, LiturgicalPeriod, Nature as CoreNature,
 };
 
-// ─── Enums de classification ─────────────────────────────────────────────────
+use crate::{
+    canonicalization::{
+        is_leap_year, resolve_tempus_ordinarium, CanonicalizedYear, MONTH_STARTS,
+    },
+    error::ForgeError,
+    registry::{
+        FeastDef, FeastRegistry, Scope,
+        Temporality as RegistryTemporality, // qualification obligatoire — conflit de nom
+        TransferTarget,
+    },
+};
 
-/// Cycle liturgique — dérivé de la présence du bloc `mobile:` ou `date:` dans le YAML.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) enum Cycle {
-    Temporal  = 0, // `mobile:` — Proprium de Tempore
-    Sanctoral = 1, // `date:`   — Sanctoral fixe
+// ─── FeastIdMap ───────────────────────────────────────────────────────────────
+
+/// `slug → FeastID` alloué. INV-FORGE-2 : BTreeMap.
+/// Calculé une fois avant la boucle annuelle dans `compile()`.
+pub(crate) type FeastIdMap = BTreeMap<String, u16>;
+
+/// Alloue les FeastIDs selon le layout §5.1 (Scope[2] | Category[2] | Sequence[12]).
+/// Ordre : lexicographique des slugs par `(scope_bits, category)` — INV-FORGE-3.
+/// BTreeMap garantit l'ordre d'itération déterministe.
+pub(crate) fn assign_feast_ids(registry: &FeastRegistry) -> FeastIdMap {
+    let mut counters: BTreeMap<(u8, u8), u16> = BTreeMap::new();
+    let mut result = FeastIdMap::new();
+
+    for feast in registry.iter() {
+        let scope_bits: u8 = match &feast.scope {
+            Scope::Universal   => 0,
+            Scope::National(_) => 1,
+            Scope::Diocesan(_) => 2,
+        };
+        let key = (scope_bits, feast.category);
+        let seq = counters.entry(key).or_insert(1);
+        if *seq > 0x0FFF {
+            // V3 (FeastIDExhausted) — détecté ici silencieusement,
+            // erreur fatale complète réservée à l'Étape 1.
+            continue;
+        }
+        let feast_id: u16 = ((scope_bits as u16) << 14)
+            | ((feast.category as u16 & 0x3) << 12)
+            | (*seq & 0x0FFF);
+        result.insert(feast.slug.clone(), feast_id);
+        *seq += 1;
+    }
+    result
 }
 
-/// Temporalité — fixe ou calculée depuis une ancre.
+// ─── Conversions registry → Core ─────────────────────────────────────────────
+// Nécessaires car registry::Color / registry::Nature ≠ liturgical_calendar_core::Color/Nature.
+
+fn color_to_core(c: &crate::registry::Color) -> CoreColor {
+    use crate::registry::Color as R;
+    match c {
+        R::Albus     => CoreColor::Albus,
+        R::Rubeus    => CoreColor::Rubeus,
+        R::Viridis   => CoreColor::Viridis,
+        R::Violaceus => CoreColor::Violaceus,
+        R::Rosaceus  => CoreColor::Roseus,  // nom différent
+        R::Niger     => CoreColor::Niger,
+        // Aureus : réservé dans Core v2.0 (valeur 6 non définie).
+        // Fallback Albus — à revoir si Core expose Color::Aureus.
+        R::Aureus    => CoreColor::Albus,
+    }
+}
+
+fn nature_to_core(n: &crate::registry::Nature) -> CoreNature {
+    use crate::registry::Nature as R;
+    match n {
+        R::Sollemnitas  => CoreNature::Sollemnitas,
+        R::Festum       => CoreNature::Festum,
+        R::Memoria      => CoreNature::Memoria,
+        R::Feria        => CoreNature::Feria,
+        R::Commemoratio => CoreNature::Commemoratio,
+    }
+}
+
+// ─── Enums de classification ──────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum Cycle {
+    Temporal  = 0,
+    Sanctoral = 1,
+}
+
+/// Temporalité de résolution locale — à distinguer de `registry::Temporality`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum Temporality {
-    Fixed  = 0, // `date:`
-    Mobile = 1, // `mobile:`
+    Fixed  = 0,
+    Mobile = 1,
 }
 
 // ─── ResolutionKey ────────────────────────────────────────────────────────────
 
-/// Clé de tri canonique. Ordre lexicographique natif via `derive(Ord)`.
-/// Valeur inférieure = priorité liturgique supérieure.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct ResolutionKey<'a> {
-    pub precedence:  u8,          // [0, 12] — inférieur = plus haute priorité
-    pub cycle:       Cycle,       // Temporal(0) < Sanctoral(1)
-    pub temporality: Temporality, // Fixed(0) < Mobile(1)
-    pub slug:        &'a str,     // tiebreaker final — ASCII stable cross-build
+    pub precedence:  u8,
+    pub cycle:       Cycle,
+    pub temporality: Temporality,
+    pub slug:        &'a str,
 }
 
-// ─── PlacedFeast ─────────────────────────────────────────────────────────────
+// ─── PlacedFeast ──────────────────────────────────────────────────────────────
 
-/// Fête positionnée sur un DOY, prête pour la résolution de conflits.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PlacedFeast {
     pub slug:           String,
     pub feast_id:       u16,
-    pub scope:          u8,   // bits [15:14] du FeastID : 0=Universal, 1=National, 2=Diocesan
-    pub precedence:     u8,   // Precedence as u8 — comparaison entière pure
-    pub nature:         Nature,
-    pub color:          Color,
+    pub scope_bits:     u8,   // 0=Universal 1=National 2=Diocesan
+    pub precedence:     u8,
+    pub nature:         CoreNature,
+    pub color:          CoreColor,
     pub has_vigil_mass: bool,
     pub cycle:          Cycle,
     pub temporality:    Temporality,
@@ -90,37 +160,27 @@ impl PlacedFeast {
 }
 
 impl PartialOrd for PlacedFeast {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> { Some(self.cmp(other)) }
 }
-
 impl Ord for PlacedFeast {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.key().cmp(&other.key())
-    }
+    fn cmp(&self, other: &Self) -> Ordering { self.key().cmp(&other.key()) }
 }
 
 // ─── ResolvedDay / ResolvedCalendar ──────────────────────────────────────────
 
-/// Résultat de résolution pour un slot DOY : primary élu + commémorations.
 #[derive(Debug, Clone)]
-pub struct ResolvedDay {
+pub(crate) struct ResolvedDay {
     pub primary:          PlacedFeast,
-    /// Triés par feast_id croissant — INV-FORGE-4.
     pub secondary_feasts: Vec<PlacedFeast>,
 }
 
-/// Table (doy → ResolvedDay) pour une année, issue de la Passe 5.
-pub struct ResolvedCalendar {
+pub(crate) struct ResolvedCalendar {
     pub year: u16,
-    /// Uniquement les DOY résolus — doy=59 absent pour années non-bissextiles.
     pub days: BTreeMap<u16, ResolvedDay>,
 }
 
 // ─── TransferQueue ────────────────────────────────────────────────────────────
 
-/// Entrée dans la TransferQueue. Ordonnée par (doy_current, feast_id) — déterministe.
 #[derive(Debug, Clone, Eq, PartialEq)]
 struct TransferEntry {
     doy_current: u16,
@@ -131,16 +191,11 @@ struct TransferEntry {
 
 impl Ord for TransferEntry {
     fn cmp(&self, other: &Self) -> Ordering {
-        // BTreeSet déduplique par Ord — (doy, feast_id) suffit.
-        // Un (doy, feast_id) identique avec depth différent → dedup silencieuse (premier wins).
-        (self.doy_current, self.feast_id)
-            .cmp(&(other.doy_current, other.feast_id))
+        (self.doy_current, self.feast_id).cmp(&(other.doy_current, other.feast_id))
     }
 }
 impl PartialOrd for TransferEntry {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> { Some(self.cmp(other)) }
 }
 
 const MAX_TRANSFER_DEPTH: u8 = 7;
@@ -150,16 +205,10 @@ struct TransferQueue {
 }
 
 impl TransferQueue {
-    fn new() -> Self {
-        Self { pending: BTreeSet::new() }
-    }
+    fn new() -> Self { Self { pending: BTreeSet::new() } }
 
     fn enqueue(
-        &mut self,
-        doy_src: u16,
-        feast: PlacedFeast,
-        depth: u8,
-        year: u16,
+        &mut self, doy_src: u16, feast: PlacedFeast, depth: u8, year: u16,
     ) -> Result<(), ForgeError> {
         if depth > MAX_TRANSFER_DEPTH {
             return Err(ForgeError::TransferFailed {
@@ -171,7 +220,7 @@ impl TransferQueue {
         }
         self.pending.insert(TransferEntry {
             doy_current: doy_src,
-            feast_id:    feast.feast_id,
+            feast_id: feast.feast_id,
             depth,
             feast,
         });
@@ -179,23 +228,18 @@ impl TransferQueue {
     }
 
     fn pop_first(&mut self) -> Option<TransferEntry> {
-        let entry = self.pending.iter().next()?.clone();
-        self.pending.remove(&entry);
-        Some(entry)
+        let e = self.pending.iter().next()?.clone();
+        self.pending.remove(&e);
+        Some(e)
     }
 
-    fn is_empty(&self) -> bool {
-        self.pending.is_empty()
-    }
+    fn is_empty(&self) -> bool { self.pending.is_empty() }
 }
 
 // ─── Déclassement saisonnier — §3.4 ─────────────────────────────────────────
 
-/// `true` si la fête doit être forcée en commémoration quelle que soit sa Precedence.
-/// Appliqué uniquement quand le primary du slot est une fête temporelle (§3.4).
 pub(crate) fn should_demote_to_commemoratio(
-    feast:  &PlacedFeast,
-    period: LiturgicalPeriod,
+    feast: &PlacedFeast, period: LiturgicalPeriod,
 ) -> bool {
     feast.precedence >= 11
         && matches!(
@@ -207,224 +251,183 @@ pub(crate) fn should_demote_to_commemoratio(
         )
 }
 
-// ─── Helper : DOY d'une fête pour une année donnée ───────────────────────────
+// ─── DOY depuis FeastDef.temporality ─────────────────────────────────────────
+// Temporality est sur FeastDef, pas sur FeastHistoryEntry.
 
-/// Résout le DOY d'une fête depuis sa version active.
-/// Retourne `None` si le slot est absorbé (tempus_ordinarium hors plage active).
-fn feast_doy(
-    version: &crate::registry::FeastVersionDef,
-    anchors: &BTreeMap<String, u16>,
-) -> Option<u16> {
-    if let Some((month, day)) = version.date {
-        // Fête fixe — MONTH_STARTS est une constante de compilation.
-        return Some(MONTH_STARTS[month as usize - 1] + day as u16 - 1);
+fn feast_doy(feast_def: &FeastDef, anchors: &BTreeMap<String, u16>) -> Option<u16> {
+    match &feast_def.temporality {
+        RegistryTemporality::Fixed { month, day } => {
+            Some(MONTH_STARTS[*month as usize - 1] + *day as u16 - 1)
+        }
+        RegistryTemporality::Mobile { anchor, offset } => {
+            let anchor_doy = anchors.get(anchor.as_str())?;
+            let doy = *anchor_doy as i32 + offset;
+            (0..=365).contains(&doy).then_some(doy as u16)
+        }
+        RegistryTemporality::Ordinal { ordinal } => {
+            let adventus = *anchors.get("adventus")?;
+            Some(resolve_tempus_ordinarium(adventus, *ordinal))
+        }
     }
-
-    let mobile = version.mobile.as_ref()?;
-
-    if mobile.anchor == "tempus_ordinarium" {
-        let ordinal = mobile.ordinal?;
-        let adventus = *anchors.get("adventus")?;
-        // resolve_tempus_ordinarium : O(1), défini dans canonicalization.rs Session A.
-        return Some(resolve_tempus_ordinarium(adventus, ordinal));
-    }
-
-    // Ancre primitive (pascha, adventus, nativitas, epiphania, pentecostes désucré).
-    let anchor_doy = *anchors.get(&mobile.anchor)?;
-    let doy = anchor_doy as i32 + mobile.offset;
-    // Offset hors [0, 365] → slot invalide (rare, protection défensive).
-    if doy < 0 || doy > 365 {
-        return None;
-    }
-    Some(doy as u16)
 }
 
-// ─── Élection canonique d'un slot ────────────────────────────────────────────
+fn feast_cycle_temporality(feast_def: &FeastDef) -> (Cycle, Temporality) {
+    match &feast_def.temporality {
+        RegistryTemporality::Fixed { .. }             => (Cycle::Sanctoral, Temporality::Fixed),
+        RegistryTemporality::Mobile { .. }
+        | RegistryTemporality::Ordinal { .. }         => (Cycle::Temporal,  Temporality::Mobile),
+    }
+}
 
-/// Trie les candidats, élit le primary, partitionne en (secondary_feasts, to_transfer).
-///
-/// `temporal_primary` : le primary élu est-il de cycle Temporal ?
-/// Conditionne l'application du déclassement saisonnier §3.4.
+// ─── Élection canonique ───────────────────────────────────────────────────────
+
 fn elect(
-    mut candidates:     Vec<PlacedFeast>,
-    period:             LiturgicalPeriod,
+    mut candidates: Vec<PlacedFeast>,
+    period:         LiturgicalPeriod,
 ) -> (PlacedFeast, Vec<PlacedFeast>, Vec<PlacedFeast>) {
-    // TRI — ordre lexicographique sur ResolutionKey.
     candidates.sort_unstable_by(|a, b| a.key().cmp(&b.key()));
 
     let primary = candidates.remove(0);
     let temporal_primary = primary.cycle == Cycle::Temporal;
 
-    let mut secondary_feasts: Vec<PlacedFeast> = Vec::new();
-    let mut to_transfer:      Vec<PlacedFeast> = Vec::new();
+    let mut secondary_feasts = Vec::new();
+    let mut to_transfer      = Vec::new();
 
-    // DÉCLASSEMENT + PARTITION — passage unique sur les candidats restants.
     for feast in candidates {
-        if temporal_primary && should_demote_to_commemoratio(&feast, period) {
-            // Déclassement saisonnier §3.4 — Nature ≠ Feria dans le pool.
-            secondary_feasts.push(feast);
-        } else if feast.precedence >= 8 {
-            // Précédence ∈ [8, 12] — commémorable, versé dans le Secondary Pool.
-            secondary_feasts.push(feast);
-        } else if feast.precedence <= 9 && feast.nature != Nature::Feria {
-            // Précédence ∈ [1, 7], non-Ferie — transfert obligatoire.
-            to_transfer.push(feast);
-        }
-        // else : Precedence ∈ [10, 12] non déclassé + Feria → supprimé silencieusement.
+if (temporal_primary && should_demote_to_commemoratio(&feast, period)) || feast.precedence >= 8 {
+    secondary_feasts.push(feast);
+} else if feast.precedence <= 9 && feast.nature != CoreNature::Feria {
+    to_transfer.push(feast);
+}
+        // else : supprimé silencieusement.
     }
 
-    // INV-FORGE-4 : secondary_feasts triés par feast_id croissant.
-    secondary_feasts.sort_unstable_by_key(|f| f.feast_id);
-
+    secondary_feasts.sort_unstable_by_key(|f| f.feast_id); // INV-FORGE-4
     (primary, secondary_feasts, to_transfer)
 }
 
-// ─── Pipeline principal — resolve_year ───────────────────────────────────────
+// ─── resolve_year ─────────────────────────────────────────────────────────────
 
-/// Résout une année calendaire complète — pipeline 5 passes.
-///
-/// Consomme `canonicalized` par move (INV-FORGE-MOVE).
-/// `registry` est partagé entre toutes les années — passé par référence.
-pub fn resolve_year(
+pub(crate) fn resolve_year(
     canonicalized: CanonicalizedYear,
     registry:      &FeastRegistry,
+    feast_ids:     &FeastIdMap,
 ) -> Result<ResolvedCalendar, ForgeError> {
     let year    = canonicalized.year;
     let is_leap = is_leap_year(year);
 
-    // ── PASSE 1 — Collecte et placement ──────────────────────────────────────
-    // Résultat : BTreeMap<doy, Vec<PlacedFeast>> — liste non triée.
-    // Aucun conflit résolu dans cette passe.
+    // ── PASSE 1 ───────────────────────────────────────────────────────────────
 
     let mut slots: BTreeMap<u16, Vec<PlacedFeast>> = BTreeMap::new();
 
-    for (slug, feast_def) in registry.feasts.iter() {
+    for feast_def in registry.iter() {
         let version = match feast_def.active_version_for(year) {
             Some(v) => v,
             None    => continue,
         };
 
-        let doy = match feast_doy(version, &canonicalized.anchors) {
+        let doy = match feast_doy(feast_def, &canonicalized.anchors) {
             Some(d) => d,
-            None    => continue, // Slot absorbé — Ok(None) normal.
+            None    => continue,
         };
 
-        // doy=59 absent en année non-bissextile (le 29 fév n'existe pas).
-        if !is_leap && doy == 59 {
-            continue;
-        }
+        if !is_leap && doy == 59 { continue; }
 
-        let scope = (feast_def.feast_id >> 14) as u8; // bits [15:14]
-
-        let (cycle, temporality) = if version.mobile.is_some() {
-            (Cycle::Temporal, Temporality::Mobile)
-        } else {
-            (Cycle::Sanctoral, Temporality::Fixed)
+        let feast_id = match feast_ids.get(&feast_def.slug) {
+            Some(&id) => id,
+            None      => continue,
         };
+
+        let scope_bits: u8 = match &feast_def.scope {
+            Scope::Universal   => 0,
+            Scope::National(_) => 1,
+            Scope::Diocesan(_) => 2,
+        };
+
+        let (cycle, temporality) = feast_cycle_temporality(feast_def);
 
         slots.entry(doy).or_default().push(PlacedFeast {
-            slug:           slug.clone(),
-            feast_id:       feast_def.feast_id,
-            scope,
-            precedence:     version.precedence as u8,
-            nature:         version.nature,
-            color:          version.color,
+            slug:           feast_def.slug.clone(),
+            feast_id,
+            scope_bits,
+            precedence:     version.precedence,
+            nature:         nature_to_core(&version.nature),
+            color:          color_to_core(&version.color),
             has_vigil_mass: version.has_vigil_mass,
             cycle,
             temporality,
         });
     }
 
-    // ── PASSE 2 — Garde V7 + résolution de scope ─────────────────────────────
-    // Opère in-place sur `slots`. Arrêt fatal sur collision irréconciliable.
+    // ── PASSE 2 ───────────────────────────────────────────────────────────────
 
     for (&doy, candidates) in slots.iter_mut() {
-        // V7a : Precedence ∈ [0, 3] — deux fêtes de ce rang = corpus incohérent.
-        let very_high: Vec<_> = candidates.iter()
-            .filter(|f| f.precedence <= 3)
-            .collect();
-        if very_high.len() >= 2 {
-            return Err(ForgeError::SolemnityCollision {
-                slug_a:     very_high[0].slug.clone(),
-                slug_b:     very_high[1].slug.clone(),
-                precedence: very_high[0].precedence,
-                doy,
-                year,
-            });
+        // V7a : Precedence ∈ [0, 3].
+        {
+            let very_high: Vec<_> = candidates.iter().filter(|f| f.precedence <= 3).collect();
+            if very_high.len() >= 2 {
+                return Err(ForgeError::SolemnityCollision {
+                    slug_a:     very_high[0].slug.clone(),
+                    slug_b:     very_high[1].slug.clone(),
+                    precedence: very_high[0].precedence,
+                    doy, year,
+                });
+            }
         }
 
-        // V7b : Precedence ∈ [4, 5], même scope — irréconciliable mécaniquement.
+        // V7b : Precedence ∈ [4, 5], même scope.
         {
-            let solemnities: Vec<_> = candidates.iter()
+            let solemn: Vec<_> = candidates.iter()
                 .filter(|f| f.precedence >= 4 && f.precedence <= 5)
                 .collect();
-            for i in 0..solemnities.len() {
-                for j in (i + 1)..solemnities.len() {
-                    if solemnities[i].scope == solemnities[j].scope {
+            for i in 0..solemn.len() {
+                for j in (i + 1)..solemn.len() {
+                    if solemn[i].scope_bits == solemn[j].scope_bits {
                         return Err(ForgeError::SolemnityCollision {
-                            slug_a:     solemnities[i].slug.clone(),
-                            slug_b:     solemnities[j].slug.clone(),
-                            precedence: solemnities[i].precedence,
-                            doy,
-                            year,
+                            slug_a:     solemn[i].slug.clone(),
+                            slug_b:     solemn[j].slug.clone(),
+                            precedence: solemn[i].precedence,
+                            doy, year,
                         });
                     }
                 }
             }
         }
 
-        // §3.1 — Hiérarchie de scope pour Solennités [4, 5] de scopes différents :
-        // retirer les candidats de scope inférieur (diocesan > national > universal).
-        let high_prec_count = candidates.iter().filter(|f| f.precedence <= 5).count();
-        if high_prec_count >= 2 {
+        // §3.1 — scope le plus local prime pour les Solennités.
+        if candidates.iter().filter(|f| f.precedence <= 5).count() >= 2 {
             let max_scope = candidates.iter()
                 .filter(|f| f.precedence <= 5)
-                .map(|f| f.scope)
+                .map(|f| f.scope_bits)
                 .max()
                 .unwrap_or(0);
-            candidates.retain(|f| {
-                !(f.precedence <= 5 && f.scope < max_scope)
-            });
+            candidates.retain(|f| !(f.precedence <= 5 && f.scope_bits < max_scope));
         }
     }
 
-    // ── PASSE 3 — Tri + Élection + Déclassement + Dispatch ───────────────────
-    // Itération DOY 0→365, ordre croissant (INV-FORGE-2).
-    // `pending_inserts` : inserts directs forward (target DOY > courant).
-    // `retrograde_inserts` : inserts directs rétrogrades (target DOY ≤ courant).
+    // ── PASSE 3 ───────────────────────────────────────────────────────────────
 
-    let mut resolved_days:      BTreeMap<u16, ResolvedDay>         = BTreeMap::new();
-    let mut transfer_queue:     TransferQueue                       = TransferQueue::new();
-    let mut pending_inserts:    BTreeMap<u16, Vec<PlacedFeast>>    = BTreeMap::new();
-    let mut retrograde_inserts: Vec<(u16, PlacedFeast)>             = Vec::new();
+    let mut resolved_days:      BTreeMap<u16, ResolvedDay>      = BTreeMap::new();
+    let mut transfer_queue                                        = TransferQueue::new();
+    let mut pending_inserts:    BTreeMap<u16, Vec<PlacedFeast>> = BTreeMap::new();
+    let mut retrograde_inserts: Vec<(u16, PlacedFeast)>          = Vec::new();
 
     for doy in 0u16..=365u16 {
-        // Fusionner : candidats initiaux + inserts directs en attente.
         let mut candidates: Vec<PlacedFeast> = slots.remove(&doy).unwrap_or_default();
         if let Some(fwd) = pending_inserts.remove(&doy) {
             candidates.extend(fwd);
         }
-
-        if candidates.is_empty() {
-            continue; // Slot vide — normal pour doy=59 non-bissextile et slots absorbés.
-        }
+        if candidates.is_empty() { continue; }
 
         let period = canonicalized.season_boundaries.period_of(doy);
         let (primary, secondary_feasts, to_transfer) = elect(candidates, period);
 
-        // DISPATCH TRANSFERTS — §3.3 Passe 3.
         for feast in to_transfer {
-            // Chercher la règle de transfert active pour cette fête / ce primary.
-            let active_rule = registry.feasts
-                .get(&feast.slug)
+            let active_rule = registry.get(&feast.slug)
                 .and_then(|def| def.active_version_for(year))
-                .and_then(|ver| {
-                    ver.transfers.iter().find(|t| t.collides == primary.slug)
-                });
+                .and_then(|ver| ver.transfers.iter().find(|t| t.collides == primary.slug));
 
             if let Some(rule) = active_rule {
-                // 1. PreResolvedTransfers — cible mobile pré-calculée (Étape 3).
-                //    Peut être rétrograde → NE PAS envoyer dans TransferQueue.
                 let pre_key = (feast.slug.clone(), rule.collides.clone());
                 if let Some(&doy_dst) = canonicalized.pre_resolved_transfers.get(&pre_key) {
                     if doy_dst <= doy {
@@ -435,14 +438,13 @@ pub fn resolve_year(
                     continue;
                 }
 
-                // 2. Règle offset ou date fixe — toujours forward.
                 let doy_dst: u16 = match &rule.target {
                     TransferTarget::Offset(n) => doy + *n as u16,
-                    TransferTarget::Date { m, d } => {
-                        MONTH_STARTS[*m as usize - 1] + *d as u16 - 1
+                    TransferTarget::Date { month, day } => {
+                        MONTH_STARTS[*month as usize - 1] + *day as u16 - 1
                     }
                     TransferTarget::Mobile { .. } => {
-                        // Mobile sans PreResolved = bug Étape 3 ; fallback TransferQueue.
+                        // Mobile sans PreResolved — bug Étape 3 ; fallback générique.
                         transfer_queue.enqueue(doy, feast, 0, year)?;
                         continue;
                     }
@@ -454,8 +456,6 @@ pub fn resolve_year(
                     pending_inserts.entry(doy_dst).or_default().push(feast);
                 }
             } else {
-                // Pas de règle déclarative → TransferQueue générique.
-                // doy_src = doy (le slot de conflit) — recherche dans [doy+1, doy+7].
                 transfer_queue.enqueue(doy, feast, 0, year)?;
             }
         }
@@ -463,31 +463,24 @@ pub fn resolve_year(
         resolved_days.insert(doy, ResolvedDay { primary, secondary_feasts });
     }
 
-    // Traitement des inserts rétrogrades — "résolution à un seul niveau" §3.3.
-    // Tri par doy_dst pour déterminisme (INV-FORGE-2).
-    retrograde_inserts.sort_unstable_by_key(|&(d, _)| d);
+    // Inserts rétrogrades — tri par doy_dst pour déterminisme.
+    retrograde_inserts.sort_unstable_by_key(|(d, _)| *d);
     for (doy_dst, feast) in retrograde_inserts {
         let period = canonicalized.season_boundaries.period_of(doy_dst);
         if let Some(day) = resolved_days.get_mut(&doy_dst) {
-            // Re-élection avec le nouvel arrivant — les `to_transfer` résultants
-            // sont ignorés (un seul niveau de résolution).
             let mut all = vec![day.primary.clone(), feast];
             all.extend(day.secondary_feasts.clone());
-            let (new_primary, new_secondary, _discarded) = elect(all, period);
+            let (new_primary, new_secondary, _) = elect(all, period);
             day.primary          = new_primary;
             day.secondary_feasts = new_secondary;
         } else {
-            // Slot rétrograde vide (fête temporelle absente) → primary direct.
             resolved_days.insert(doy_dst, ResolvedDay {
-                primary:          feast,
-                secondary_feasts: Vec::new(),
+                primary: feast, secondary_feasts: Vec::new(),
             });
         }
     }
 
-    // ── PASSE 4 — Exécution des transferts (clôture transitive) ──────────────
-    // TransferQueue : BTreeSet, ordre (doy_src, feast_id) croissant.
-    // Recherche dans [doy_src+1, doy_src+7] — strictement forward.
+    // ── PASSE 4 ───────────────────────────────────────────────────────────────
 
     while let Some(entry) = transfer_queue.pop_first() {
         let TransferEntry { doy_current, feast, depth, .. } = entry;
@@ -499,32 +492,21 @@ pub fn resolve_year(
                 Some(day) => day.primary.precedence > feast.precedence,
                 None      => true,
             };
+            if !slot_free { continue; }
 
-            if !slot_free {
-                continue;
-            }
-
-            // Insérer au slot cible avec re-tri par ResolutionKey.
             let period = canonicalized.season_boundaries.period_of(doy_dst);
-            let mut all_candidates = vec![feast.clone()];
+            let mut all = vec![feast.clone()];
             if let Some(existing) = resolved_days.remove(&doy_dst) {
-                all_candidates.push(existing.primary);
-                all_candidates.extend(existing.secondary_feasts);
+                all.push(existing.primary);
+                all.extend(existing.secondary_feasts);
             }
-
-            let (new_primary, new_secondary, displaced_transfers) =
-                elect(all_candidates, period);
-
-            // Fêtes transférables déplacées → re-enfilées avec depth+1.
-            for displaced in displaced_transfers {
-                transfer_queue.enqueue(doy_dst, displaced, depth + 1, year)?;
+            let (new_primary, new_secondary, displaced) = elect(all, period);
+            for d in displaced {
+                transfer_queue.enqueue(doy_dst, d, depth + 1, year)?;
             }
-
             resolved_days.insert(doy_dst, ResolvedDay {
-                primary:          new_primary,
-                secondary_feasts: new_secondary,
+                primary: new_primary, secondary_feasts: new_secondary,
             });
-
             placed = true;
             break;
         }
@@ -541,22 +523,19 @@ pub fn resolve_year(
 
     debug_assert!(transfer_queue.is_empty(), "TransferQueue non vide après Passe 4");
 
-    // ── PASSE 5 — Vérification de stabilité ──────────────────────────────────
-    // Exactement un primary par slot résolu. V9 : FeastID cohérent avec le registre.
+    // ── PASSE 5 ───────────────────────────────────────────────────────────────
 
     for (&doy, day) in &resolved_days {
-        if let Some(def) = registry.feasts.get(&day.primary.slug) {
-            if def.feast_id != day.primary.feast_id {
+        if let Some(&expected_id) = feast_ids.get(&day.primary.slug) {
+            if expected_id != day.primary.feast_id {
                 return Err(ForgeError::FeastIDMutated {
                     slug:        day.primary.slug.clone(),
-                    expected_id: def.feast_id,
+                    expected_id,
                     found_id:    day.primary.feast_id,
-                    doy,
-                    year,
+                    doy, year,
                 });
             }
         }
-        // secondary_feasts triés par feast_id — invariant garanti par elect().
     }
 
     Ok(ResolvedCalendar { year, days: resolved_days })

@@ -119,6 +119,14 @@ pub struct FeastDef {
     pub history:     Vec<FeastHistoryEntry>,
 }
 
+impl FeastDef {
+    /// Retourne la tranche `history[]` active pour l'année `year`.
+    /// `None` si aucune entrée ne couvre l'année (fête hors plage ou future).
+    pub fn active_version_for(&self, year: u16) -> Option<&FeastHistoryEntry> {
+        self.history.iter().find(|e| year >= e.from && year <= e.to)
+    }
+}
+
 // ---------------------------------------------------------------------------
 // FeastRegistry — INV-FORGE-2 : BTreeMap, pas de HashMap
 // ---------------------------------------------------------------------------

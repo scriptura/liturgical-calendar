@@ -31,7 +31,7 @@ const ENTRY_COUNT: u32 = YEAR_COUNT * SLOTS_PER_YEAR; // 157 746
 /// La vespers_lookahead_pass DOIT avoir été appliquée avant cet appel.
 ///
 /// Retourne `checksum: [u8; 32]` (SHA-256 du [Data Body ∥ Secondary Pool]).
-pub fn write_kald(
+pub(crate) fn write_kald(
     path:        &Path,
     all_entries: Vec<[CalendarEntry; 366]>,
     pool:        PoolBuilder,

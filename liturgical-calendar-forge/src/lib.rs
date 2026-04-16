@@ -22,8 +22,8 @@ pub use canonicalization::{
 // ── Orchestre Session B ───────────────────────────────────────────────────────
 use std::path::Path;
 use materialization::{generate_year, vespers_lookahead_pass, PoolBuilder};
-use resolution::resolve_year;
 use packing::write_kald;
+use resolution::{assign_feast_ids, resolve_year};
 
 /// Compile un corpus YAML en fichier `.kald` pour une plage 1969–2399.
 ///
@@ -36,21 +36,21 @@ pub fn compile(
     output:     &Path,
     variant_id: u16,
 ) -> Result<[u8; 32], ForgeError> {
-    let mut pool        = PoolBuilder::new();
-    let mut all_entries = Vec::with_capacity(431);
+    // FeastIDs alloués une fois pour toute la plage — stables entre années.
+    let feast_ids   = assign_feast_ids(&registry);
+    let mut pool    = PoolBuilder::new();
+    let mut all_entries: Vec<[liturgical_calendar_core::CalendarEntry; 366]> =
+        Vec::with_capacity(431);
 
     for year in 1969u16..=2399 {
-        // `canonicalize_year` consomme par valeur — INV-FORGE-MOVE.
         let canon    = canonicalize_year(year, &registry)?;
-        // Cloner SeasonBoundaries avant le move de `canon` dans resolve_year.
         let sb       = canon.season_boundaries.clone();
-        let resolved = resolve_year(canon, &registry)?;
+        let resolved = resolve_year(canon, &registry, &feast_ids)?;
         let entries  = generate_year(resolved, &mut pool, &sb)?;
         all_entries.push(entries);
     }
 
-    // vespers_lookahead_pass — accès simultané à l'entrée i et i+1.
-    // split_at_mut évite l'emprunt simultané de deux éléments d'un Vec.
+    // Vespers lookahead — accès simultané i et i+1 via split_at_mut.
     for i in 0..all_entries.len() {
         let (left, right) = all_entries.split_at_mut(i + 1);
         let next_jan1     = right.first().map(|e| &e[0]);
