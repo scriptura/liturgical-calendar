@@ -6,7 +6,8 @@ edition = "2021"
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.9"
-sha2 = "0.10"
+sha2 = { version = "0.10", default-features = false }
+liturgical-calendar-core = { path = "../liturgical-calendar-core" }
 
 [features]
 std = []

@@ -70,11 +70,47 @@ pub enum RegistryError {
 
 #[derive(Debug)]
 pub enum ForgeError {
+    // ── Variants Session A (inchangés) ────────────────────────────────────
     Parse(ParseError),
     Registry(RegistryError),
-    /// Ancre non résolue lors du calcul de PreResolvedTransfers
+    /// Ancre non résolue lors du calcul de PreResolvedTransfers.
     UnresolvedAnchor { anchor: String },
     Io(std::io::Error),
+
+    // ── Variants Session B ─────────────────────────────────────────────────
+    /// V7 — Deux Solennités irréconciliables sur le même slot DOY.
+    SolemnityCollision {
+        slug_a:     String,
+        slug_b:     String,
+        precedence: u8,
+        doy:        u16,
+        year:       u16,
+    },
+    /// V8 — Fête transférable sans slot libre dans [doy+1, doy+7].
+    TransferFailed {
+        slug:       String,
+        origin_doy: u16,
+        blocked_at: u16,
+        year:       u16,
+    },
+    /// V9 — FeastID muté entre élection et packing (corruption pipeline).
+    FeastIDMutated {
+        slug:        String,
+        expected_id: u16,
+        found_id:    u16,
+        doy:         u16,
+        year:        u16,
+    },
+    /// V10 — Padding Entry absente à doy=59 pour année non-bissextile.
+    PaddingEntryMissing { year: u16, doy: u16 },
+    /// V11 — Secondary Pool dépasse u16::MAX entrées (déduplication insuffisante).
+    SecondaryPoolOverflow { pool_len: u32, max_capacity: u32 },
+    /// V12 — secondary_count dépasse u8::MAX pour un slot DOY.
+    SecondaryCountOverflow { doy: u16, year: u16, count: usize },
+    /// Passe 5 — Table finale incohérente après clôture transitive.
+    ResolutionIncomplete { doy: u16, year: u16, detail: String },
+    /// Validation post-écriture kal_validate_header échouée.
+    KaldValidationFailed { code: i32 },
 }
 
 impl From<ParseError> for ForgeError {

@@ -281,6 +281,7 @@ name = "liturgical-calendar-forge"
 version = "0.1.0"
 dependencies = [
  "cbindgen",
+ "liturgical-calendar-core",
  "serde",
  "serde_yaml",
  "sha2",

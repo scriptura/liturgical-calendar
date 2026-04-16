@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use liturgical_calendar_core::LiturgicalPeriod;
 
 use crate::error::ForgeError;
 use crate::registry::{FeastRegistry, TransferTarget};
@@ -170,6 +171,7 @@ pub fn build_anchor_table(year: u16) -> AnchorTable {
 // SeasonBoundaries — jalons de l'année liturgique
 // ---------------------------------------------------------------------------
 
+#[derive(Debug, Clone)]
 pub struct SeasonBoundaries {
     pub adventus:      u16,
     pub nativitas:     u16,
@@ -181,17 +183,54 @@ pub struct SeasonBoundaries {
 }
 
 impl SeasonBoundaries {
-    pub fn for_year(year: u16) -> Self {
-        let easter = compute_easter(year);
-        Self {
-            adventus:      resolve_adventus(year),
-            nativitas:     resolve_nativitas(year),
-            epiphania:     resolve_epiphania(year),
-            ash_wednesday: easter - 46,
-            palm_sunday:   easter - 7,
-            easter,
-            pentecost:     easter + 49,
+    /// Période liturgique opérationnelle pour un DOY donné, dans l'année courante.
+    ///
+    /// Hypothèse : `epiphania` = DOY de la fête telle que résolue par `resolve_epiphania`.
+    /// Le Baptême du Seigneur tombe au plus tard à `epiphania + 7` — utilisé comme
+    /// borne haute conservative de la fin du Temps de Noël en début d'année.
+    pub fn period_of(&self, doy: u16) -> LiturgicalPeriod {
+        // Triduum Pascal : Jeudi–Vendredi–Samedi Saints [easter-3, easter-1].
+        let triduum_start = self.easter.saturating_sub(3);
+        let triduum_end   = self.easter.saturating_sub(1);
+        if doy >= triduum_start && doy <= triduum_end {
+            return LiturgicalPeriod::TriduumPaschale;
         }
+
+        // Semaine Sainte (Rameaux–Mercredi Saint) : [palm_sunday, easter-4].
+        // palm_sunday = easter-7, easter-4 = Mercredi Saint — 4 jours.
+        let dies_sancti_end = self.easter.saturating_sub(4);
+        if doy >= self.palm_sunday && doy <= dies_sancti_end {
+            return LiturgicalPeriod::DiesSancti;
+        }
+
+        // Temps pascal : [Easter, Pentecôte] inclusif.
+        if doy >= self.easter && doy <= self.pentecost {
+            return LiturgicalPeriod::TempusPaschale;
+        }
+
+        // Carême : [Cendres, Rameaux-1].
+        if doy >= self.ash_wednesday && doy < self.palm_sunday {
+            return LiturgicalPeriod::TempusQuadragesimae;
+        }
+
+        // Avent : [adventus, Noël-1].
+        if doy >= self.adventus && doy < self.nativitas {
+            return LiturgicalPeriod::TempusAdventus;
+        }
+
+        // Temps de Noël — fin d'année : [nativitas, 365].
+        if doy >= self.nativitas {
+            return LiturgicalPeriod::TempusNativitatis;
+        }
+
+        // Temps de Noël — début d'année : [0, epiphania+7].
+        // epiphania+7 = borne haute du Baptême du Seigneur (1er dimanche après Épiphanie).
+        if doy <= self.epiphania + 7 {
+            return LiturgicalPeriod::TempusNativitatis;
+        }
+
+        // Temps ordinaire : tout le reste (TO I et TO II).
+        LiturgicalPeriod::TempusOrdinarium
     }
 }
 
