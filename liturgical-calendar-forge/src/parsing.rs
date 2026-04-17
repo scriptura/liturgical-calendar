@@ -373,7 +373,7 @@ pub fn parse_feast_from_yaml(
     content: &str,
 ) -> Result<FeastDef, ForgeError> {
     // V1 — parsing YAML
-    let yaml: YamlFeast = serde_yaml::from_str(content)
+    let yaml: YamlFeast = serde_yml::from_str(content)
         .map_err(|e| ParseError::MalformedYaml(e.to_string()))?;
 
     if yaml.version != 1 {

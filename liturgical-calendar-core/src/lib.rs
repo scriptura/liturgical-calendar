@@ -14,6 +14,7 @@ pub mod ffi;
 pub mod header;
 /// Types de domaine canoniques : `Precedence`, `Nature`, `Color`, `LiturgicalPeriod`.
 pub mod types;
+pub mod lits_provider;
 
 pub use entry::CalendarEntry;
 pub use ffi::{

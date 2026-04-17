@@ -42,6 +42,12 @@ pub enum ParseError {
     TransferOffsetNotPositive { slug: String, collides: String, offset: u32 },
     /// V-T5 — anchor mobile de transfer n'est pas une ancre primitive
     TransferMobileInvalidAnchor { slug: String, collides: String, anchor: String },
+    /// V-I1 — i18n/la/{slug}.yaml absent ou clé {from}.{field} manquante.
+    /// Fatale : chaque entrée history[] doit avoir un titre latin.
+    I18nMissingLatinKey { slug: String, from: u16, field: String },
+    /// V-I2 — Clé orpheline dans un dictionnaire i18n : la valeur `from`
+    /// ne correspond à aucun `from` déclaré dans history[] pour ce slug.
+    I18nOrphanKey { slug: String, lang: String, from: u16, field: String },
 }
 
 // ---------------------------------------------------------------------------

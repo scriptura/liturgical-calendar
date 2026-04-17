@@ -7,6 +7,8 @@ pub mod canonicalization;
 pub mod resolution;
 pub mod materialization;
 pub mod packing;
+pub mod i18n;
+pub(crate) mod lits_writer;
 
 // Re-exports publics
 pub use error::ForgeError;
@@ -19,26 +21,61 @@ pub use canonicalization::{
     resolve_tempus_ordinarium, MONTH_STARTS, is_leap_year,
 };
 
-// ── Orchestre Session B ───────────────────────────────────────────────────────
+// ── Orchestre Session B + C ───────────────────────────────────────────────────
 use std::path::Path;
 use materialization::{generate_year, vespers_lookahead_pass, PoolBuilder};
 use packing::write_kald;
 use resolution::{assign_feast_ids, resolve_year};
 
-/// Compile un corpus YAML en fichier `.kald` pour une plage 1969–2399.
+/// Paramètres i18n pour la production des fichiers `.lits` compagnons.
 ///
-/// Étapes exécutées : Canonicalization (Étape 3) → Conflict Resolution (Étape 4)
-/// → Day Materialization + Vespers Lookahead (Étape 5) → Binary Packing (Étape 6).
+/// Si `None` est passé à `compile`, aucun `.lits` n'est produit (comportement
+/// Session B inchangé — `.kald` seul).
+pub struct I18nConfig<'a> {
+    /// Chemin vers `corpus/{rite}/i18n/` — racine de l'arborescence des dictionnaires.
+    pub i18n_root: &'a Path,
+    /// Répertoire de sortie pour les fichiers `.lits` produits.
+    /// Un fichier `{lang}.lits` y est écrit par langue découverte.
+    pub lits_dir: &'a Path,
+}
+
+/// Compile un corpus YAML en fichier `.kald` pour la plage 1969–2399.
+/// Si `i18n` est fourni, produit également un `.lits` par langue compilée.
 ///
-/// Retourne le SHA-256 `[u8; 32]` du fichier produit (`checksum[..8]` = Build ID).
+/// # Pipeline
+///
+/// - Étape 1bis — i18n Resolution (si `i18n` fourni)
+/// - Étapes 3–5 — Canonicalization → Conflict Resolution → Materialization
+/// - Étape 6    — Binary Packing `.kald` puis `.lits` (si `i18n` fourni)
+///
+/// # Retour
+///
+/// SHA-256 `[u8; 32]` du `.kald` produit (`checksum[..8]` = Build ID).
+/// Le même Build ID est inscrit dans le header de chaque `.lits`.
 pub fn compile(
     registry:   FeastRegistry,
     output:     &Path,
     variant_id: u16,
+    i18n:       Option<I18nConfig<'_>>,
 ) -> Result<[u8; 32], ForgeError> {
-    // FeastIDs alloués une fois pour toute la plage — stables entre années.
-    let feast_ids   = assign_feast_ids(&registry);
-    let mut pool    = PoolBuilder::new();
+    // ── Étape 1bis — i18n Resolution (AOT, avant le pipeline de résolution) ──
+    // Le DictStore et la LabelTable sont construits ici mais n'influencent pas
+    // le `.kald` — séparation topologie / labels (§9.1 spec).
+    let i18n_artifacts = match &i18n {
+        Some(cfg) => {
+            let mut store = i18n::DictStore::new();
+            let langs     = i18n::discover_and_load_i18n(cfg.i18n_root, &mut store)?;
+            i18n::validate_i18n(&registry, &store)?;
+            Some((store, langs))
+        }
+        None => None,
+    };
+
+    // ── FeastIDs — alloués une fois, stables sur toute la plage ──────────────
+    let feast_ids = assign_feast_ids(&registry);
+
+    // ── Étapes 3–5 ── Canonicalization → Resolution → Materialization ─────────
+    let mut pool = PoolBuilder::new();
     let mut all_entries: Vec<[liturgical_calendar_core::CalendarEntry; 366]> =
         Vec::with_capacity(431);
 
@@ -57,5 +94,20 @@ pub fn compile(
         vespers_lookahead_pass(&mut left[i], next_jan1);
     }
 
-    write_kald(output, all_entries, pool, variant_id)
+    // ── Étape 6 — Binary Packing `.kald` ─────────────────────────────────────
+    let kald_checksum = write_kald(output, all_entries, pool, variant_id)?;
+
+    // ── Étape 6 — Binary Packing `.lits` (une par langue) ────────────────────
+    // Produit après le `.kald` : FeastIDs définitivement alloués, checksum connu.
+    if let (Some(cfg), Some((store, langs))) = (&i18n, i18n_artifacts) {
+        let lang_refs: Vec<&str> = langs.iter().map(String::as_str).collect();
+        let table = i18n::build_label_table(&registry, &store, &feast_ids, &lang_refs);
+
+        for lang in &lang_refs {
+            let lits_path = cfg.lits_dir.join(format!("{}.lits", lang));
+            lits_writer::write_lits(&lits_path, &table, lang, &kald_checksum)?;
+        }
+    }
+
+    Ok(kald_checksum)
 }
