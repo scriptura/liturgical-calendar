@@ -1,0 +1,4 @@
+cargo:rerun-if-changed=cbindgen.toml
+cargo:rerun-if-changed=src/ffi.rs
+cargo:rerun-if-changed=src/header.rs
+cargo:rerun-if-changed=src/entry.rs

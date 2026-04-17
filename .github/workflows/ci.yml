@@ -1,0 +1,151 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+# ---------------------------------------------------------------------------
+# Job principal : build + test sur 4 cibles
+# ---------------------------------------------------------------------------
+jobs:
+  test:
+    name: Test — ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Cible 1 : Linux x86_64 (référence)
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+
+          # Cible 2 : Linux aarch64 (cross-compilation via `cross`)
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            cross: true
+
+          # Cible 3 : macOS x86_64
+          - target: x86_64-apple-darwin
+            os: macos-latest
+
+          # Cible 4 : WebAssembly (no_std, pas de tests unitaires directs)
+          - target: wasm32-unknown-unknown
+            os: ubuntu-latest
+            wasm: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # -----------------------------------------------------------------------
+      # Toolchain Rust stable + cible demandée
+      # -----------------------------------------------------------------------
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      # -----------------------------------------------------------------------
+      # Outillage spécifique par cible
+      # -----------------------------------------------------------------------
+      - name: Install cross (aarch64)
+        if: matrix.cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Install wasm-pack (wasm)
+        if: matrix.wasm
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      # -----------------------------------------------------------------------
+      # Build liturgical-calendar-core
+      # -----------------------------------------------------------------------
+      - name: Build Core (natif)
+        if: "!matrix.cross && !matrix.wasm"
+        run: cargo build -p liturgical-calendar-core --target ${{ matrix.target }}
+
+      - name: Build Core (cross — aarch64)
+        if: matrix.cross
+        run: cross build -p liturgical-calendar-core --target ${{ matrix.target }}
+
+      - name: Build Core (wasm)
+        if: matrix.wasm
+        run: cargo build -p liturgical-calendar-core --target ${{ matrix.target }}
+
+      # -----------------------------------------------------------------------
+      # Tests unitaires + intégration
+      # Les tests Forge sont exécutés uniquement en natif (pas de cross, pas de wasm).
+      # -----------------------------------------------------------------------
+      - name: Test Core (natif)
+        if: "!matrix.cross && !matrix.wasm"
+        run: cargo test -p liturgical-calendar-core --target ${{ matrix.target }}
+
+      - name: Test Forge (natif — inclut full_range.rs)
+        if: "!matrix.cross && !matrix.wasm"
+        run: cargo test -p liturgical-calendar-forge --target ${{ matrix.target }}
+
+      # -----------------------------------------------------------------------
+      # Clippy — zéro warning requis (RUSTFLAGS="-D warnings" est hérité)
+      # -----------------------------------------------------------------------
+      - name: Clippy Core + Forge
+        if: "!matrix.cross && !matrix.wasm"
+        run: |
+          cargo clippy -p liturgical-calendar-core -- -D warnings
+          cargo clippy -p liturgical-calendar-forge -- -D warnings
+
+  # ---------------------------------------------------------------------------
+  # Job séparé : déterminisme SHA-256 cross-platform
+  # Dépend de la réussite du job `test` sur toutes les cibles.
+  # ---------------------------------------------------------------------------
+  sha256-cross-platform:
+    name: SHA-256 — déterminisme cross-platform
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      # Exécute le test `full_range_deterministic` défini dans full_range.rs.
+      # Ce test compare les octets 24–55 (SHA-256 header) entre deux builds
+      # successifs — il est moins coûteux et plus explicite qu'un sha256sum shell.
+      - name: Vérifier déterminisme via full_range_deterministic
+        run: |
+          cargo test -p liturgical-calendar-forge \
+            --test full_range \
+            -- full_range_deterministic --exact --nocapture
+
+  # ---------------------------------------------------------------------------
+  # Job optionnel : fuzzing court (smoke test, 10 000 inputs par cible)
+  # Désactivé sur PR pour limiter la durée ; activé sur push main.
+  # Nécessite nightly + cargo-fuzz (libFuzzer est lié à LLVM/clang).
+  # ---------------------------------------------------------------------------
+  fuzz-smoke:
+    name: Fuzz smoke — 10 000 inputs
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust nightly (requis par cargo-fuzz / libFuzzer)
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz
+
+      # Chaque cible est limitée à 10 000 runs (-runs=10000).
+      # Un panic ou un crash fera échouer le step avec un exit code non-nul.
+      - name: Fuzz validate_header
+        run: cargo fuzz run validate_header -- -runs=10000
+
+      - name: Fuzz read_entry
+        run: cargo fuzz run read_entry -- -runs=10000
+
+      - name: Fuzz read_secondary
+        run: cargo fuzz run read_secondary -- -runs=10000
