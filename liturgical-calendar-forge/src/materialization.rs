@@ -188,7 +188,7 @@ pub(crate) fn vespers_lookahead_pass(
         if !has_first_vespers { continue; }
 
         let today_prec = (entries[doy as usize].flags & 0x0F) as u8;
-        if today_prec <= tomorrow_prec { continue; }
+        if today_prec < tomorrow_prec && today_prec != 0 { continue; }
 
         entries[doy as usize].flags |= 1 << 14; // HAS_VESPERAE_I
         if tomorrow_has_vigil {
