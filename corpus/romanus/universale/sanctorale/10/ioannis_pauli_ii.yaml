@@ -1,10 +1,21 @@
-version: 1
+vversion: 1
 category: 1
 date:
   month: 10
   day: 22
+
 history:
-  - from: 2014
+  # Période 1 : Béatification (2011–2013)
+  # title → i18n/la/ioannis_pauli_ii.yaml : { 2011: { title: "B. Ioannes Paulus II" } }
+  - from: 2011
+    to: 2013
     precedence: 12
+    nature: memoria
+    color: albus
+
+  # Période 2 : Canonisation (2014 → indéfini)
+  # title → i18n/la/ioannis_pauli_ii.yaml : { 2014: { title: "S. Ioannes Paulus II" } }
+  - from: 2014
+    precedence: 13
     nature: memoria
     color: albus
