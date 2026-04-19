@@ -22,10 +22,6 @@ pub fn is_leap_year(year: u16) -> bool {
 
 // ---------------------------------------------------------------------------
 // Conversions pseudo-DOY ↔ date réelle
-//
-// Pseudo-DOY : slot 59 réservé à Feb 29 même en année non-bissextile.
-// Pour les années non-bissextiles, Mar 1 = pseudo-DOY 60 = DOY effectif 59.
-// Résultat : MONTH_STARTS est invariant quelle que soit l'année.
 // ---------------------------------------------------------------------------
 
 /// Pseudo-DOY → DOY effectif (0-indexé dans l'année civile)
@@ -64,9 +60,7 @@ fn weekday_sakamoto(year: u16, month: u8, day: u8) -> u8 {
     let m = month as i32;
     let d = day as i32;
     if m < 3 { y -= 1; }
-    // raw : 0=Dim, 1=Lun, …, 6=Sam
     let raw = (y + y / 4 - y / 100 + y / 400 + T[(m - 1) as usize] + d) % 7;
-    // Conversion → 0=Lun … 6=Dim
     ((raw + 6) % 7) as u8
 }
 
@@ -78,7 +72,6 @@ pub fn weekday_of_doy(year: u16, pseudo_doy: u16) -> u8 {
 
 // ---------------------------------------------------------------------------
 // Pâques — Meeus/Jones/Butcher
-// Bornes garanties : DOY ∈ [81, 115], DOY ≠ 59
 // ---------------------------------------------------------------------------
 
 pub fn meeus_jones_butcher(year: u16) -> (u8, u8) {
@@ -112,33 +105,29 @@ pub fn compute_easter(year: u16) -> u16 {
 /// Premier dimanche de l'Avent = dimanche le plus proche du 30 novembre (DOY 334)
 pub fn resolve_adventus(year: u16) -> u16 {
     let nov30 = 334u16;
-    let wd = weekday_of_doy(year, nov30); // 0=Lun … 6=Dim
-    // Jours jusqu'au prochain dimanche (0 si déjà dimanche)
+    let wd = weekday_of_doy(year, nov30);
     let fwd: i16 = if wd == 6 { 0 } else { 6 - wd as i16 };
-    // Si fwd <= 3 : avancer, sinon : reculer (fwd - 7 < 0)
     let offset = if fwd <= 3 { fwd } else { fwd - 7 };
     (nov30 as i16 + offset) as u16
 }
 
 /// Dimanche dans [Dec 26, Dec 31].
-/// Si Noël (DOY 359 = Dec 25) est dimanche → fallback DOY 364 (Dec 30).
 pub fn resolve_nativitas(year: u16) -> u16 {
-    let wd = weekday_of_doy(year, 359); // 0=Lun … 6=Dim
+    let wd = weekday_of_doy(year, 359);
     if wd == 6 {
-        return 364; // Dec 25 = Dim → Ste-Famille = Dec 30
+        return 364;
     }
     359 + (6 - wd) as u16
 }
 
 /// Premier dimanche strictement après le 6 janvier (DOY 5).
 pub fn resolve_epiphania(year: u16) -> u16 {
-    let wd = weekday_of_doy(year, 5); // 0=Lun … 6=Dim
+    let wd = weekday_of_doy(year, 5);
     let days: u16 = if wd == 6 { 7 } else { (6 - wd) as u16 };
     5 + days
 }
 
 /// Nième dimanche du Temps Ordinaire en fonction du premier dimanche de l'Avent.
-/// ordinal ∈ [1, 34] (validé en Étape 1, V4a)
 pub fn resolve_tempus_ordinarium(adventus_doy: u16, ordinal: u8) -> u16 {
     adventus_doy.saturating_sub(7 * (35 - ordinal as u16))
 }
@@ -149,8 +138,6 @@ pub fn resolve_tempus_ordinarium(adventus_doy: u16, ordinal: u8) -> u16 {
 
 pub type AnchorTable = BTreeMap<String, u16>;
 
-/// Construit la table des ancres pour une année donnée.
-/// Ordre de résolution conforme à la spec (1→6, pentecostes = pascha+49).
 pub fn build_anchor_table(year: u16) -> AnchorTable {
     let mut t = BTreeMap::new();
     let nativitas  = resolve_nativitas(year);
@@ -163,12 +150,11 @@ pub fn build_anchor_table(year: u16) -> AnchorTable {
     t.insert("adventus".to_string(),   adventus);
     t.insert("pascha".to_string(),     easter);
     t.insert("pentecostes".to_string(), pentecost);
-    // tempus_ordinarium résolu à la demande (dépend de ordinal par fête)
     t
 }
 
 // ---------------------------------------------------------------------------
-// SeasonBoundaries — jalons de l'année liturgique
+// SeasonBoundaries
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone)]
@@ -176,10 +162,10 @@ pub struct SeasonBoundaries {
     pub adventus:      u16,
     pub nativitas:     u16,
     pub epiphania:     u16,
-    pub ash_wednesday: u16, // easter - 46
-    pub palm_sunday:   u16, // easter - 7
+    pub ash_wednesday: u16,
+    pub palm_sunday:   u16,
     pub easter:        u16,
-    pub pentecost:     u16, // easter + 49
+    pub pentecost:     u16,
 }
 
 impl SeasonBoundaries {
@@ -195,60 +181,45 @@ impl SeasonBoundaries {
             pentecost:     easter + 49,
         }
     }
-    /// Période liturgique opérationnelle pour un DOY donné, dans l'année courante.
-    ///
-    /// Hypothèse : `epiphania` = DOY de la fête telle que résolue par `resolve_epiphania`.
-    /// Le Baptême du Seigneur tombe au plus tard à `epiphania + 7` — utilisé comme
-    /// borne haute conservative de la fin du Temps de Noël en début d'année.
+
     pub fn period_of(&self, doy: u16) -> LiturgicalPeriod {
-        // Triduum Pascal : Jeudi–Vendredi–Samedi Saints [easter-3, easter-1].
         let triduum_start = self.easter.saturating_sub(3);
         let triduum_end   = self.easter.saturating_sub(1);
         if doy >= triduum_start && doy <= triduum_end {
             return LiturgicalPeriod::TriduumPaschale;
         }
 
-        // Semaine Sainte (Rameaux–Mercredi Saint) : [palm_sunday, easter-4].
-        // palm_sunday = easter-7, easter-4 = Mercredi Saint — 4 jours.
         let dies_sancti_end = self.easter.saturating_sub(4);
         if doy >= self.palm_sunday && doy <= dies_sancti_end {
             return LiturgicalPeriod::DiesSancti;
         }
 
-        // Temps pascal : [Easter, Pentecôte] inclusif.
         if doy >= self.easter && doy <= self.pentecost {
             return LiturgicalPeriod::TempusPaschale;
         }
 
-        // Carême : [Cendres, Rameaux-1].
         if doy >= self.ash_wednesday && doy < self.palm_sunday {
             return LiturgicalPeriod::TempusQuadragesimae;
         }
 
-        // Avent : [adventus, Noël-1].
         if doy >= self.adventus && doy < self.nativitas {
             return LiturgicalPeriod::TempusAdventus;
         }
 
-        // Temps de Noël — fin d'année : [nativitas, 365].
         if doy >= self.nativitas {
             return LiturgicalPeriod::TempusNativitatis;
         }
 
-        // Temps de Noël — début d'année : [0, epiphania+7].
-        // epiphania+7 = borne haute du Baptême du Seigneur (1er dimanche après Épiphanie).
         if doy <= self.epiphania + 7 {
             return LiturgicalPeriod::TempusNativitatis;
         }
 
-        // Temps ordinaire : tout le reste (TO I et TO II).
         LiturgicalPeriod::TempusOrdinarium
     }
 }
 
 // ---------------------------------------------------------------------------
-// PreResolvedTransfers — INV-FORGE-2 : BTreeMap
-// Clé : (slug_fête, slug_collides)  — Valeur : DOY absolu de la cible
+// PreResolvedTransfers
 // ---------------------------------------------------------------------------
 
 pub type PreResolvedTransfers = BTreeMap<(String, String), u16>;
@@ -266,8 +237,6 @@ fn resolve_mobile_transfer_targets(
                     let anchor_doy = anchors.get(anchor.as_str())
                         .ok_or_else(|| ForgeError::UnresolvedAnchor { anchor: anchor.clone() })?;
                     let doy_dst = (*anchor_doy as i32 + offset) as u16;
-                    // Clé : (slug_fête, slug_collides) — dernière écriture gagne si
-                    // plusieurs tranches history déclarent le même collides (résolution Session B).
                     result.insert(
                         (feast.slug.clone(), transfer.collides.clone()),
                         doy_dst,
@@ -281,7 +250,7 @@ fn resolve_mobile_transfer_targets(
 }
 
 // ---------------------------------------------------------------------------
-// CanonicalizedYear — livrable de canonicalization pour une année
+// CanonicalizedYear
 // ---------------------------------------------------------------------------
 
 pub struct CanonicalizedYear {
@@ -313,8 +282,8 @@ mod tests {
 
     #[test]
     fn month_starts_jan_mar() {
-        assert_eq!(MONTH_STARTS[0], 0);   // Jan 1 = DOY 0
-        assert_eq!(MONTH_STARTS[2], 60);  // Mar 1 = DOY 60 (slot 59 = Feb 29)
+        assert_eq!(MONTH_STARTS[0], 0);
+        assert_eq!(MONTH_STARTS[2], 60);
     }
 
     // --- is_leap_year ---
@@ -323,21 +292,19 @@ mod tests {
     fn leap_year() {
         assert!( is_leap_year(2024));
         assert!(!is_leap_year(2025));
-        assert!(!is_leap_year(2100)); // divisible par 100, pas par 400
-        assert!( is_leap_year(2000)); // divisible par 400
+        assert!(!is_leap_year(2100));
+        assert!( is_leap_year(2000));
     }
 
     // --- Pâques ---
 
     #[test]
     fn easter_2025() {
-        // 20 avr = MONTH_STARTS[3] + 19 = 91 + 19 = 110
         assert_eq!(compute_easter(2025), 110);
     }
 
     #[test]
     fn easter_2000() {
-        // 23 avr = 91 + 22 = 113
         assert_eq!(compute_easter(2000), 113);
     }
 
@@ -356,7 +323,6 @@ mod tests {
 
     #[test]
     fn tempus_ordinarium_34th() {
-        // Christ-Roi : 34e dimanche OT, adventus=333 (valeur synthétique de test)
         assert_eq!(resolve_tempus_ordinarium(333, 34), 326);
     }
 
@@ -369,7 +335,6 @@ mod tests {
 
     #[test]
     fn adventus_2025_is_nov30() {
-        // Nov 30 2025 est un dimanche → adventus = DOY 334
         assert_eq!(resolve_adventus(2025), 334);
     }
 
@@ -377,41 +342,35 @@ mod tests {
 
     #[test]
     fn date_to_doy_april_20() {
-        // Pâques 2025 : (4, 20) → DOY 110
         assert_eq!(date_to_pseudo_doy(2025, 4, 20), 110);
     }
 
     #[test]
     fn date_to_doy_march_1_invariant() {
-        // Mar 1 = DOY 60 quelle que soit l'année (slot 59 réservé Feb 29)
         assert_eq!(date_to_pseudo_doy(2025, 3, 1), 60);
         assert_eq!(date_to_pseudo_doy(2024, 3, 1), 60);
     }
 
-    // --- weekday_of_doy sanity ---
+    // --- weekday_of_doy ---
 
     #[test]
     fn weekday_nov30_2025_is_sunday() {
-        // Dimanche = 6 dans convention 0=Lun…6=Dim
         assert_eq!(weekday_of_doy(2025, 334), 6);
     }
 
     #[test]
     fn weekday_easter_2025_is_sunday() {
-        // Pâques est toujours un dimanche
         assert_eq!(weekday_of_doy(2025, compute_easter(2025)), 6);
     }
 
-    // --- PreResolvedTransfers (intégration minimale) ---
+    // --- PreResolvedTransfers ---
+    //
+    // YAML precedence: 2 → interne 1 (SollemnitatesFixaeMaior).
 
     #[test]
     fn pre_resolved_transfer_pascha_offset() {
         use crate::registry::{FeastRegistry, Scope};
         use crate::parsing::parse_feast_from_yaml;
-
-        // Fête iosephi (19 mars) avec un transfer mobile vers pascha-8
-        // Pâques 2016 = 27 mars = MONTH_STARTS[2] + 26 = 60 + 26 = 86
-        // pascha 2016 = DOY 86 → cible = 86 - 8 = 78 (19 mars = DOY 78)
 
         let yaml_iosephi = r#"
 version: 1
@@ -420,7 +379,7 @@ date:
   month: 3
   day: 19
 history:
-  - precedence: 1
+  - precedence: 2
     nature: sollemnitas
     color: white
     transfers:
@@ -436,7 +395,7 @@ mobile:
   anchor: pascha
   offset: -7
 history:
-  - precedence: 1
+  - precedence: 2
     nature: sollemnitas
     color: red
 "#;
@@ -447,14 +406,14 @@ history:
         registry.insert(def_iosephi);
         registry.insert(def_palmis);
 
-        // 2016 : Pâques = 27 mars
+        // 2016 : Pâques = 27 mars = DOY 86
         let easter_2016 = compute_easter(2016);
         assert_eq!(easter_2016, 86, "Pâques 2016 doit être DOY 86 (27 mars)");
 
         let cy = canonicalize_year(2016, &registry).unwrap();
         let key = ("iosephi".to_string(), "dominica_in_palmis".to_string());
         let doy_dst = cy.pre_resolved_transfers[&key];
-        // pascha(86) + (-8) = 78 = Mar 19
+        // pascha(86) + (−8) = 78 = Mar 19
         assert_eq!(doy_dst, 78);
     }
 }

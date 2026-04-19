@@ -146,7 +146,7 @@ date: # OU mobile: — exactement l'un des deux
 history:
   - from: 1969
     to: ~
-    precedence: 1
+    precedence: 2
     nature: sollemnitas
     color: albus
     season: tempus_nativitatis # Optionnel — voir §2.3
@@ -187,7 +187,7 @@ feasts:
     history: # Tableau ordonné des versions — voir §4
       - from: <year>
         to: <year|~>
-        precedence: <0–12>
+        precedence: <1–13> # Rang liturgique effectif (YAML 1-based).
         nature: <string>
         color: <string>
         season: <string> # Optionnel — voir §2.3
@@ -352,7 +352,7 @@ mobile:
 history:
   - from: 1969
     to: ~
-    precedence: 2
+    precedence: 3
     nature: sollemnitas
     color: albus
     season: tempus_nativitatis
@@ -625,7 +625,7 @@ Le bloc `history` est un tableau ordonné. Chaque entrée couvre une plage d'ann
 history:
   - from: <year> # Borne inférieure inclusive. Défaut : 1969 si omis.
     to: <year|~> # Borne supérieure inclusive. null (ou omis) = indéfini.
-    precedence: <0–12> # Rang liturgique effectif.
+    precedence: <1–13> # Rang liturgique effectif (Tabella dierum, YAML 1-based)
     nature: <string> # Voir §6.2.
     color: <string> # Voir §6.3.
     season: <string> # Optionnel — voir §2.3 et §6.4.
@@ -687,7 +687,7 @@ history:
   # title → i18n/la/ioannis_pauli_ii.yaml : { 2011: { title: "B. Ioannes Paulus II" } }
   - from: 2011
     to: 2013
-    precedence: 11
+    precedence: 12
     nature: memoria
     color: albus
 
@@ -695,14 +695,14 @@ history:
   # title → i18n/la/ioannis_pauli_ii.yaml : { 2014: { title: "S. Ioannes Paulus II" } }
   - from: 2014
     to: ~
-    precedence: 12
+    precedence: 13
     nature: memoria
     color: albus
 ```
 
 **Lecture de la hiérarchie :**
 
-La `Precedence` est numérique inverse : valeur plus faible = priorité plus haute. La béatification (valeur 11, Memoria obligatoria nationale) avait une priorité **plus haute** que la version canonisée (valeur 12, Memoria ad libitum universelle). Les deux peuvent coexister dans le registre car leurs scopes et leurs plages temporelles sont disjoints.
+La `Precedence` est numérique inverse : valeur plus faible = priorité plus haute. La béatification (YAML 12 → interne 11, Memoria obligatoria nationale) avait une priorité **plus haute** que la version canonisée (YAML 13 → interne 12, Memoria ad libitum universelle). Les deux peuvent coexister dans le registre car leurs scopes et leurs plages temporelles sont disjoints.
 
 ---
 
@@ -920,26 +920,28 @@ Un répertoire absent est ignoré silencieusement — un ordo n'a pas nécessair
 
 ### 6.1 `precedence` — Degrés Liturgiques Effectifs
 
-Valeurs admises : **0 à 12 inclus**. Valeurs 13–15 : réservées système — la Forge rejette toute occurrence avec `RegistryError::InvalidPrecedenceValue(u8)`.
+Valeurs YAML admises : **1 à 13 inclus** (Tabella dierum liturgicorum, rangs I–XIII). La Forge opère la normalisation `YAML − 1 → interne [0–12]` au point Serde (`deserialize_precedence`). Toute valeur YAML hors de `[1, 13]` produit `ParseError::MalformedYaml`.
 
 **Hiérarchie inverse : valeur plus faible = priorité plus haute.**
 
-| Valeur | Niveau canonique (NALC 1969)                                | Bits flags [3:0] |
-| ------ | ----------------------------------------------------------- | ---------------- |
-| 0      | Triduum Sacrum                                              | `0000`           |
-| 1      | Nativitas, Epiphania, Ascensio, Pentecostes                 | `0001`           |
-| 2      | Dominicae Adventus, Quadragesimae, Paschales                | `0010`           |
-| 3      | Feria IV Cinerum ; Hebdomada Sancta                         | `0011`           |
-| 4      | Sollemnitates Domini, BMV, Sanctorum in Calendario Generali | `0100`           |
-| 5      | Sollemnitates propriae                                      | `0101`           |
-| 6      | Festa Domini in Calendario Generali                         | `0110`           |
-| 7      | Dominicae per annum                                         | `0111`           |
-| 8      | Festa BMV et Sanctorum in Calendario Generali               | `1000`           |
-| 9      | Festa propria                                               | `1001`           |
-| 10     | Feriae Adventus (17–24 Dec) ; Octava Nativitatis            | `1010`           |
-| 11     | Memoriae obligatoriae                                       | `1011`           |
-| 12     | Feriae per annum ; Memoriae ad libitum                      | `1100`           |
-| 13–15  | **Réservés système** — non admissibles en YAML              | —                |
+| Valeur YAML | Valeur interne | Niveau canonique (NALC 1969)                                | Bits flags [3:0] |
+| ----------- | -------------- | ----------------------------------------------------------- | ---------------- |
+| 1           | 0              | Triduum Sacrum                                              | `0000`           |
+| 2           | 1              | Nativitas, Epiphania, Ascensio, Pentecostes                 | `0001`           |
+| 3           | 2              | Dominicae Adventus, Quadragesimae, Paschales                | `0010`           |
+| 4           | 3              | Feria IV Cinerum ; Hebdomada Sancta                         | `0011`           |
+| 5           | 4              | Sollemnitates Domini, BMV, Sanctorum in Calendario Generali | `0100`           |
+| 6           | 5              | Sollemnitates propriae                                      | `0101`           |
+| 7           | 6              | Festa Domini in Calendario Generali                         | `0110`           |
+| 8           | 7              | Dominicae per annum                                         | `0111`           |
+| 9           | 8              | Festa BMV et Sanctorum in Calendario Generali               | `1000`           |
+| 10          | 9              | Festa propria                                               | `1001`           |
+| 11          | 10             | Feriae Adventus (17–24 Dec) ; Octava Nativitatis            | `1010`           |
+| 12          | 11             | Memoriae obligatoriae                                       | `1011`           |
+| 13          | 12             | Feriae per annum ; Memoriae ad libitum                      | `1100`           |
+| —           | —              | **Valeurs internes 13–15 réservées** — jamais atteintes     | —                |
+
+> **Boundary Normalization :** la Forge convertit `precedence_yaml → precedence_interne = precedence_yaml − 1` au point d'entrée Serde (`deserialize_precedence`). Le YAML expose le domaine humain (rang I à XIII de la Tabella). Le `.kald` et tous les types Rust internes utilisent le domaine machine (0–12, conforme au layout 4 bits de `CalendarEntry.flags`).
 
 ### 6.2 `nature` — Type Liturgique
 
@@ -1136,7 +1138,8 @@ Violation → `RegistryError::UnknownNatureString(String)` avec hint si valeur c
 
 ```
 ∀ entrée e ∈ history :
-  e.nature == "memoria"  ⟹  e.precedence ∈ {11, 12}
+  e.nature == "memoria"  ⟹  e.precedence_yaml ∈ {12, 13}
+  (soit e.precedence_interne ∈ {11, 12})
   ∧ e.precedence est obligatoire (pas de valeur par défaut implicite)
 ```
 
@@ -1179,10 +1182,11 @@ Violation → `ParseError::InvalidSlugSyntax(String)` — la `String` contient l
 **V2-Bis — Domaine de Precedence (ex-V2 spec §10)**
 
 ```
-∀ entrée e ∈ history : e.precedence ∈ [0, 12]
+∀ entrée e ∈ history : e.precedence_yaml ∈ [1, 13]
+  (normalisation Serde : e.precedence_interne = e.precedence_yaml − 1 ∈ [0, 12])
 ```
 
-Violation → `RegistryError::InvalidPrecedenceValue(u8)` (valeurs 13–15 réservées système)
+Violation → `ParseError::MalformedYaml` (via `serde::de::Error::custom` dans `deserialize_precedence`)
 
 ### Groupe E — Validité du Bloc `transfers` (V-T1, V-T2, V-T3, V-T4, V-T5)
 
@@ -1325,7 +1329,7 @@ date:
 history:
   - from: 1969
     to: ~
-    precedence: 1
+    precedence: 2
     nature: sollemnitas
     color: albus
     season: tempus_nativitatis
@@ -1353,23 +1357,23 @@ Valeur `flags` numérique : `encode_flags(1, 0, 2, 0)` = `1 | (0 << 4) | (2 << 8
 ### 9.2 Fête Mobile — Ascensio Domini
 
 ```yaml
-# data/universale/temporale/ascensio_domini.yaml
-# slug = "ascensio_domini" déduit du stem du nom de fichier
+# data/universale/temporale/in_ascensione_domini.yaml
+# slug = "in_ascensione_domini" déduit du stem du nom de fichier
 
 version: 1
 category: 0
 mobile:
   anchor: pascha
-  offset: +39
+  offset: 39
 
 history:
   - from: 1969
     to: ~
-    precedence: 1
+    precedence: 2
     nature: sollemnitas
     color: albus
     season: tempus_paschale
-    # title → i18n/la/ascensio_domini.yaml : { 1969: { title: "Ascensio Domini" } }
+    # title → i18n/la/in_ascensione_domini.yaml : { 1969: { title: "In Ascensione Domini" } }
 ```
 
 **Résolution en 2025 :** Pâques 2025 = `doy 110` (20 avril, DOY 0-based). Ascension = `doy 110 + 39 = 149` (29 mai 2025).
@@ -1418,7 +1422,7 @@ history:
   # TransferQueue cherche doy+1 libre. Résolution automatique, conforme.
   - from: 1969
     to: 2007
-    precedence: 4
+    precedence: 5
     nature: sollemnitas
     color: albus
 
@@ -1427,7 +1431,7 @@ history:
   # transfers scoped à [2008, ~] — invisible aux années 1969–2007.
   - from: 2008
     to: ~
-    precedence: 4
+    precedence: 5
     nature: sollemnitas
     color: albus
     transfers:
@@ -1478,8 +1482,8 @@ history:
 ### 9.4 Surcharge Diocésaine
 
 ```yaml
-# data/dioecesana/PARIS/sanctorale/dionysii_parisiensis.yaml
-# slug = "dionysii_parisiensis", scope = diocesan, region = PARIS — tous déduits du chemin
+# data/dioecesana/PARIS/sanctorale/dionysii_et_sociorum.yaml
+# slug = "dionysii_et_sociorum", scope = diocesan, region = PARIS — tous déduits du chemin
 
 version: 1
 category: 2
@@ -1490,10 +1494,10 @@ date:
 history:
   - from: 1969
     to: ~
-    precedence: 4
+    precedence: 5
     nature: sollemnitas
     color: rubeus
-    # title → i18n/la/dionysii_parisiensis.yaml (dans dioecesana/PARIS/i18n/)
+    # title → i18n/la/dionysii_et_sociorum.yaml (dans dioecesana/PARIS/i18n/)
 ```
 
 **Comportement Forge :** lors d'une compilation `CompilationTarget::Diocesan { region: "FR", diocese: "PARIS" }`, la Forge découvre et ingère les fichiers dans l'ordre de §1.4 : universale, puis nationalia/FR, puis dioecesana/PARIS. Si le 9 octobre est également occupé par une fête nationale ou universelle de `Precedence` ≥ 4, la Forge applique Conflict Resolution (Étape 3) : la Solennité diocésaine (`Precedence = 4`) a la même valeur que les Solennités du calendrier général — la règle de scope local l'emporte à égalité de `Precedence`.
@@ -1514,12 +1518,12 @@ date:
 history:
   - from: 2011
     to: 2013
-    precedence: 11
+    precedence: 12
     nature: memoria
     color: albus
   - from: 2014
     to: ~
-    precedence: 12
+    precedence: 13
     nature: memoria
     color: albus
 ```
@@ -1566,8 +1570,8 @@ Avant de soumettre un fichier YAML à la Forge :
 - [ ] **Aucun champ textuel** (`title`, `name`, `description`, …) dans aucun bloc `history[]` — le YAML est un graphe de données pur
 - [ ] L'évolution de `precedence` ou de `nature` est portée par des entrées `history` distinctes
 - [ ] Les plages `[from, to]` du bloc `history` sont disjointes pour un même slug/scope
-- [ ] `precedence` ∈ [0, 12] pour chaque entrée `history` — jamais 13, 14 ou 15
-- [ ] Si `nature: memoria` : `precedence` est **obligatoire** et vaut 11 (obligatoire) ou 12 (ad libitum) — toute autre valeur est fatale (V-Natura-Memoria)
+- [ ] `precedence` ∈ [1, 13] pour chaque entrée `history` (Tabella dierum, rangs I–XIII) — la Forge rejette toute valeur hors plage au point Serde
+- [ ] Si `nature: memoria` : `precedence` est **obligatoire** et vaut 12 (obligatoire, YAML) ou 13 (ad libitum, YAML) — toute autre valeur est fatale (V-Natura-Memoria)
 - [ ] `nature` est l'une des 5 valeurs admises (§6.2) — aucun terme canonique informel
 - [ ] Si `has_vigil_mass: true` : `nature` doit être `sollemnitas` (V-Vigilia)
 - [ ] `has_vigil_mass` omis pour les fêtes sans vigile propre — les Premières Vêpres sont automatiques

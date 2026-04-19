@@ -1,0 +1,10 @@
+version: 1
+category: 1
+date:
+  month: 4
+  day: 2
+history:
+  - from: 1969
+    precedence: 12
+    nature: memoria
+    color: albus

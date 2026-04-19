@@ -1,0 +1,10 @@
+version: 1
+category: 1
+date:
+  month: 11
+  day: 9
+history:
+  - from: 1969
+    precedence: 5
+    nature: festum
+    color: albus

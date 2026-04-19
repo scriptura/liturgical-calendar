@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use std::collections::BTreeSet;
 use std::path::Path;
 use std::fs;
@@ -8,6 +8,33 @@ use crate::registry::{
     Color, FeastDef, FeastHistoryEntry, FeastRegistry, LiturgicalPeriod,
     Nature, Scope, Temporality, TransferDef, TransferTarget,
 };
+
+// ---------------------------------------------------------------------------
+// Boundary Normalization : Precedence 1-based (YAML) → 0-based (interne)
+// ---------------------------------------------------------------------------
+//
+// Le contrat amont (YAML / rédacteur humain) expose une plage 1–13 conforme
+// à la Tabella dierum liturgicorum 1969 (rangs I à XIII).
+// L'Engine et le pipeline interne utilisent 0–12 pour les opérations bitwise.
+// La conversion s'effectue ici, au point d'entrée exact de la Forge (Serde),
+// afin que nulle autre couche n'ait à connaître la convention YAML.
+
+fn deserialize_precedence<'de, D>(deserializer: D) -> Result<u8, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let human_val = u8::deserialize(deserializer)?;
+    // V2-Bis : domaine YAML 1–13 ; valeurs hors plage rejetées ici, avant
+    // toute construction du graphe métier.
+    if !matches!(human_val, 1..=13) {
+        return Err(serde::de::Error::custom(format!(
+            "precedence invalide : {} (attendu 1–13, conforme Tabella dierum liturgicorum)",
+            human_val
+        )));
+    }
+    // Shift −1 : alignement avec l'enum interne Precedence (0–12).
+    Ok(human_val - 1)
+}
 
 // ---------------------------------------------------------------------------
 // Structs de désérialisation YAML — deny_unknown_fields partout
@@ -57,6 +84,7 @@ struct YamlMobileDst {
 struct YamlHistoryEntry {
     from:           Option<u16>,
     to:             Option<u16>,
+    #[serde(deserialize_with = "deserialize_precedence")]
     precedence:     u8,
     nature:         String,
     color:          String,
@@ -221,10 +249,11 @@ fn parse_history(slug: &str, entries: &[YamlHistoryEntry])
         let from = entry.from.unwrap_or(1969);
         let to   = entry.to.unwrap_or(2399);
 
-        // V2-Bis — precedence ∈ [0,12]
-        if entry.precedence > 12 {
-            return Err(RegistryError::InvalidPrecedenceValue(entry.precedence).into());
-        }
+        // V2-Bis — garanti par deserialize_precedence (domaine 0–12 interne
+        // assuré au point Serde). Cette assertion est un filet de sécurité
+        // en cas de construction manuelle hors Serde dans les tests.
+        debug_assert!(entry.precedence <= 12, "Invariant V2-Bis violé après Serde");
+
         // V3b — plages temporelles
         if from < 1969 || to > 2399 || from > to {
             return Err(RegistryError::InvalidTemporalRange { from, to }.into());
@@ -236,6 +265,8 @@ fn parse_history(slug: &str, entries: &[YamlHistoryEntry])
         let has_vigil_mass = entry.has_vigil_mass.unwrap_or(false);
 
         // V-Natura-Memoria
+        // Valeurs internes : 11 = MemoriaeObligatoriae, 12 = FeriaePerAnnumEtMemoriaeAdLibitum
+        // (YAML correspondant : 12 et 13 après shift −1)
         if nature == Nature::Memoria && entry.precedence != 11 && entry.precedence != 12 {
             return Err(ParseError::InvalidMemoriaPrecedence {
                 slug: slug.to_string(),
@@ -275,8 +306,6 @@ fn parse_history(slug: &str, entries: &[YamlHistoryEntry])
 
 fn check_temporal_overlap(_slug: &str, entries: &[FeastHistoryEntry])
     -> Result<(), ForgeError>
-// TODO: slug dans error ? RegistryError::TemporalOverlap ne porte pas de champ slug (spec actuelle).
-// Le paramètre est conservé pour cohérence d'appel depuis parse_history.
 {
     let mut sorted: Vec<&FeastHistoryEntry> = entries.iter().collect();
     sorted.sort_by_key(|e| e.from);
@@ -296,7 +325,6 @@ fn parse_transfers(slug: &str, from: u16, transfers: &[YamlTransfer])
     -> Result<Vec<TransferDef>, ForgeError>
 {
     let mut result: Vec<TransferDef> = Vec::with_capacity(transfers.len());
-    // INV-FORGE-2 : BTreeSet pour détecter doublons (pas HashMap)
     let mut seen: BTreeSet<&str> = BTreeSet::new();
 
     for t in transfers {
@@ -430,7 +458,6 @@ fn ingest_scope_dir(
         let dir = scope_dir.join(sub);
         if !dir.exists() { continue; }
 
-        // INV-FORGE-1 : fs::read_dir non ordonné → collecter + trier
         let mut files: Vec<std::path::PathBuf> = fs::read_dir(&dir)?
             .filter_map(|e| e.ok())
             .map(|e| e.path())
@@ -451,6 +478,12 @@ fn ingest_scope_dir(
             // V6 — slug avant parsing
             validate_slug(&stem).map_err(ForgeError::Parse)?;
 
+            // Ignorer les fichiers vides — corpus en cours de construction
+            let content = fs::read_to_string(&path)?;
+            if content.trim().is_empty() {
+                continue;
+            }
+
             let def = parse_feast_file(&path, &stem, scope.clone())?;
             registry.insert(def);
         }
@@ -460,20 +493,16 @@ fn ingest_scope_dir(
 
 // ---------------------------------------------------------------------------
 // ingest_corpus — point d'entrée public
-// Ordre : universale → nationalia (lex) → dioecesana (lex)
-// Post-ingestion : V-T2 (collides targets)
 // ---------------------------------------------------------------------------
 
 pub fn ingest_corpus(data_dir: &Path) -> Result<FeastRegistry, ForgeError> {
     let mut registry = FeastRegistry::new();
 
-    // Universale
     let universale = data_dir.join("universale");
     if universale.exists() {
         ingest_scope_dir(&universale, Scope::Universal, &mut registry)?;
     }
 
-    // Nationalia — lex sort sur code ISO
     let nationalia = data_dir.join("nationalia");
     if nationalia.exists() {
         let mut iso_dirs: Vec<std::path::PathBuf> = fs::read_dir(&nationalia)?
@@ -490,7 +519,6 @@ pub fn ingest_corpus(data_dir: &Path) -> Result<FeastRegistry, ForgeError> {
         }
     }
 
-    // Dioecesana — lex sort sur identifiant
     let dioecesana = data_dir.join("dioecesana");
     if dioecesana.exists() {
         let mut id_dirs: Vec<std::path::PathBuf> = fs::read_dir(&dioecesana)?
@@ -565,6 +593,81 @@ mod tests {
         ));
     }
 
+    // --- Boundary Normalization : Precedence ---
+
+    /// Une valeur YAML 0 (hors plage 1–13) doit être rejetée par Serde.
+    #[test]
+    fn precedence_yaml_zero_rejected() {
+        let yaml = r#"
+version: 1
+category: 0
+mobile:
+  anchor: pascha
+  offset: 0
+history:
+  - precedence: 0
+    nature: sollemnitas
+    color: white
+"#;
+        let err = parse_feast_from_yaml("test_slug", Scope::Universal, yaml).unwrap_err();
+        // MalformedYaml car le message vient de serde::de::Error::custom
+        assert!(matches!(err, ForgeError::Parse(ParseError::MalformedYaml(_))));
+    }
+
+    /// Une valeur YAML 14 (hors plage 1–13) doit être rejetée par Serde.
+    #[test]
+    fn precedence_yaml_fourteen_rejected() {
+        let yaml = r#"
+version: 1
+category: 0
+mobile:
+  anchor: pascha
+  offset: 0
+history:
+  - precedence: 14
+    nature: sollemnitas
+    color: white
+"#;
+        let err = parse_feast_from_yaml("test_slug", Scope::Universal, yaml).unwrap_err();
+        assert!(matches!(err, ForgeError::Parse(ParseError::MalformedYaml(_))));
+    }
+
+    /// La valeur limite haute YAML 13 (→ 12 interne) doit être acceptée.
+    #[test]
+    fn precedence_yaml_thirteen_accepted() {
+        let yaml = r#"
+version: 1
+category: 1
+date:
+  month: 5
+  day: 1
+history:
+  - precedence: 13
+    nature: feria
+    color: green
+"#;
+        let def = parse_feast_from_yaml("test_slug", Scope::Universal, yaml).unwrap();
+        assert_eq!(def.history[0].precedence, 12); // 13 − 1 = 12 interne
+    }
+
+    /// La valeur limite basse YAML 1 (→ 0 interne) doit être acceptée.
+    #[test]
+    fn precedence_yaml_one_maps_to_zero_internal() {
+        let yaml = r#"
+version: 1
+category: 0
+mobile:
+  anchor: pascha
+  offset: 0
+history:
+  - precedence: 1
+    nature: sollemnitas
+    color: white
+"#;
+        let def = parse_feast_from_yaml("test_slug", Scope::Universal, yaml).unwrap();
+        assert_eq!(def.history[0].precedence, 0); // 1 − 1 = 0 interne = TriduumSacrum
+    }
+
     // --- V4a ---
 
     #[test]
@@ -577,7 +680,7 @@ mobile:
   offset: 7
   ordinal: 3
 history:
-  - precedence: 1
+  - precedence: 2
     nature: sollemnitas
     color: white
 "#;
@@ -594,7 +697,7 @@ mobile:
   anchor: pascha
   ordinal: 1
 history:
-  - precedence: 1
+  - precedence: 2
     nature: sollemnitas
     color: white
 "#;
@@ -604,6 +707,7 @@ history:
 
     // --- V-Natura-Memoria ---
 
+    /// YAML precedence: 10 → interne 9 (FestaPropria) : invalide pour memoria.
     #[test]
     fn v_natura_memoria_invalid_precedence() {
         let yaml = r#"
@@ -613,7 +717,7 @@ date:
   month: 5
   day: 1
 history:
-  - precedence: 9
+  - precedence: 10
     nature: memoria
     color: white
 "#;
@@ -621,13 +725,15 @@ history:
         assert!(matches!(
             err,
             ForgeError::Parse(ParseError::InvalidMemoriaPrecedence {
-                found_precedence: 9, ..
+                found_precedence: 9, // valeur interne après shift
+                ..
             })
         ));
     }
 
+    /// YAML precedence: 12 → interne 11 (MemoriaeObligatoriae) : valide.
     #[test]
-    fn v_natura_memoria_valid_precedence_11() {
+    fn v_natura_memoria_valid_precedence_12_yaml() {
         let yaml = r#"
 version: 1
 category: 1
@@ -635,7 +741,24 @@ date:
   month: 5
   day: 1
 history:
-  - precedence: 11
+  - precedence: 12
+    nature: memoria
+    color: white
+"#;
+        assert!(parse_feast_from_yaml("test_slug", Scope::Universal, yaml).is_ok());
+    }
+
+    /// YAML precedence: 13 → interne 12 (FeriaePerAnnumEtMemoriaeAdLibitum) : valide.
+    #[test]
+    fn v_natura_memoria_valid_precedence_13_yaml() {
+        let yaml = r#"
+version: 1
+category: 1
+date:
+  month: 5
+  day: 1
+history:
+  - precedence: 13
     nature: memoria
     color: white
 "#;
@@ -644,9 +767,9 @@ history:
 
     // --- V-Vigilia ---
 
+    /// YAML precedence: 12 → interne 11. Memoria + has_vigil_mass → VigiliaNonSollemnitas.
     #[test]
     fn v_vigilia_non_sollemnitas() {
-        // has_vigil_mass: true sur une natura != sollemnitas → VigiliaNonSollemnitas
         let yaml = r#"
 version: 1
 category: 1
@@ -654,7 +777,7 @@ date:
   month: 5
   day: 1
 history:
-  - precedence: 11
+  - precedence: 12
     nature: memoria
     color: white
     has_vigil_mass: true
@@ -674,7 +797,7 @@ mobile:
   anchor: pentecostes
   offset: 0
 history:
-  - precedence: 1
+  - precedence: 2
     nature: sollemnitas
     color: white
 "#;
@@ -692,7 +815,6 @@ history:
 
     #[test]
     fn transfer_ambiguous() {
-        // offset ET mobile simultanément dans le même transfer (scoped history)
         let yaml = r#"
 version: 1
 category: 1
@@ -700,7 +822,7 @@ date:
   month: 3
   day: 19
 history:
-  - precedence: 1
+  - precedence: 2
     nature: sollemnitas
     color: white
     transfers:
@@ -725,7 +847,7 @@ date:
   month: 3
   day: 19
 history:
-  - precedence: 1
+  - precedence: 2
     nature: sollemnitas
     color: white
     transfers:
@@ -752,7 +874,7 @@ date:
   month: 3
   day: 19
 history:
-  - precedence: 1
+  - precedence: 2
     nature: sollemnitas
     color: white
     transfers:
@@ -777,7 +899,7 @@ date:
   month: 3
   day: 19
 history:
-  - precedence: 1
+  - precedence: 2
     nature: sollemnitas
     color: white
     transfers:
@@ -787,7 +909,6 @@ history:
           offset: 3
 "#;
         let def = parse_feast_from_yaml("test_slug", Scope::Universal, yaml).unwrap();
-        // transfers scoped à history[0]
         let t = &def.history[0].transfers[0];
         match &t.target {
             TransferTarget::Mobile { anchor, offset } => {
@@ -809,7 +930,7 @@ date:
   month: 1
   day: 1
 history:
-  - precedence: 1
+  - precedence: 2
     nature: sollemnitas
     color: white
 "#;
@@ -818,6 +939,8 @@ history:
     }
 
     // --- Iosephi — transfers scoped (schème v1.7.0) ---
+    //
+    // YAML precedence: 5 → interne 4 (SollemnitatesGenerales).
 
     const YAML_IOSEPHI: &str = r#"
 version: 1
@@ -829,12 +952,12 @@ date:
 history:
   - from: 1969
     to: 2007
-    precedence: 4
+    precedence: 5
     nature: sollemnitas
     color: albus
 
   - from: 2008
-    precedence: 4
+    precedence: 5
     nature: sollemnitas
     color: albus
     transfers:
@@ -858,7 +981,6 @@ history:
 
     #[test]
     fn parse_iosephi_scoped_transfers() {
-        // V-T2 (collides targets) est post-ingestion : non exécutée ici
         let feast = parse_feast_from_yaml(
             "iosephi_sponsi_beatae_mariae_virginis",
             Scope::Universal,
@@ -870,11 +992,13 @@ history:
         let v1969 = &feast.history[0];
         assert_eq!(v1969.from, 1969);
         assert_eq!(v1969.to, 2007);
+        assert_eq!(v1969.precedence, 4); // YAML 5 − 1 = 4 interne
         assert!(v1969.transfers.is_empty(), "période 1969–2007 sans transfers");
 
         let v2008 = &feast.history[1];
         assert_eq!(v2008.from, 2008);
-        assert_eq!(v2008.to, 2399); // to absent → défaut
+        assert_eq!(v2008.to, 2399);
+        assert_eq!(v2008.precedence, 4); // YAML 5 − 1 = 4 interne
         assert_eq!(v2008.transfers.len(), 4, "4 collides en Semaine Sainte");
 
         for t in &v2008.transfers {

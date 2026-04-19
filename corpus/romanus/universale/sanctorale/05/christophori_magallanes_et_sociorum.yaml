@@ -1,0 +1,10 @@
+version: 1
+category: 1
+date:
+  month: 5
+  day: 21
+history:
+  - from: 2000
+    precedence: 12
+    nature: memoria
+    color: rubeus

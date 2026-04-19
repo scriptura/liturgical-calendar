@@ -92,7 +92,7 @@ fn full_range_deterministic() {
 /// structure : primary occupé par la fête pascale, secondary non-vide.
 #[test]
 fn full_range_iustini_june1_2025() {
-    let kald = forge_full_range(2025..=2025).unwrap();
+    let kald = forge_full_range(1969..=2399).unwrap(); 
     let mut e = CalendarEntry::zeroed();
     let rc = unsafe { kal_read_entry(kald.as_ptr(), kald.len(), 2025, 152, &mut e) };
 

@@ -329,7 +329,7 @@ Le champ `ordinal` est invalide sur toute ancre autre que `tempus_ordinarium`. L
 - **Dérivation du slug depuis le stem du nom de fichier** (`path.file_stem()`) — validation `[a-z][a-z0-9_]*` (V6) effectuée **avant** désérialisation YAML. Tout stem invalide → `ParseError::InvalidSlugSyntax(stem)`, le fichier n'est pas parsé.
 - Dérivation du scope et de la region depuis le chemin — validation de cohérence path ↔ contenu (`ParseError::ScopePathMismatch`)
 - Ingestion YAML → structures Rust intermédiaires (`FeastVersionDef`)
-  - Champ attendu : `version: 1` (pas `format_version` — sa présence produit `MalformedYaml` par champ inconnu)
+  - Champ attendu : `version: 1` (sinon `MalformedYaml` par champ inconnu)
   - Champ `slug` : **absent du YAML** — fourni par `path.file_stem()` avant désérialisation
 - Construction du `FeastRegistry` (BTreeMap)
 - Désérialisation et validation du bloc `transfers` si présent : V-T1, V-T2, V-T3 (§8 scheme, Groupe E)
@@ -456,7 +456,7 @@ Sortie : `ResolvedCalendar` — table indexée `(year, doy) → ResolvedDay { pr
 
 **Tests :**
 
-- `ResolutionKey` : `sort_unstable_by_key` sur un slot de 3 fêtes → vérifier que `slot[0]` est la Solennité (Precedence=1), `slot[1]` la Fête (Precedence=8), `slot[2]` la Mémoire (Precedence=11).
+- `ResolutionKey` : `sort_unstable_by_key` sur un slot de 3 fêtes → vérifier que `slot[0]` est la Solennité (Precedence interne=1, YAML=2), `slot[1]` la Fête (Precedence interne=8, YAML=9), `slot[2]` la Mémoire (Precedence interne=11, YAML=12).
 - Tiebreaker `slug` : deux fêtes de Precedence, Cycle et Temporality identiques → la fête dont le slug est lexicographiquement inférieur devient primary.
 - Passe 2 — V7 : deux Solennités de même scope (Precedence=1) sur le même DOY → `ForgeError::SolemnityCollision` avant tout tri.
 - Passe 3 — `transfers` avec `offset` : fête déplacée atterrit au bon DOY calculé.
@@ -693,8 +693,8 @@ Implémentation complète conforme §7.4 spec.
 
 **Tests :**
 
-- `flag_mask = 0x000F, flag_value = 4` → toutes les Solennités (Precedence=4) de l'année 2025
-- `flag_mask = 0x000F, flag_value = 0` → uniquement le Triduum (Precedence=0) : doit retourner exactement 3 entrées (Jeudi, Vendredi, Samedi Saints)
+- `flag_mask = 0x000F, flag_value = 4` → toutes les Solennités (Precedence interne=4, YAML=5) de l'année 2025
+- `flag_mask = 0x000F, flag_value = 0` → uniquement le Triduum (Precedence interne=0, YAML=1) : doit retourner exactement 3 entrées (Jeudi, Vendredi, Samedi Saints)
 - Résultat trié croissant par `idx`
 - `out_capacity` insuffisant → `KAL_ERR_BUF_TOO_SMALL`
 
@@ -751,6 +751,17 @@ Flag `compression` dans le Header (bits libres de `variant_id`). Support ZSTD op
 
 **v2.8 — API REST**  
 Serveur HTTP léger wrappant les 4 fonctions FFI de l'Engine. Endpoints : `GET /day/{year}/{doy}`, `GET /scan?mask=&value=`.
+
+---
+
+## Résumé des invariants post-patch
+
+| Couche           | Convention    | Plage    | Responsable de la conversion |
+| ---------------- | ------------- | -------- | ---------------------------- |
+| YAML (rédacteur) | 1-based       | [1, 13]  | —                            |
+| Forge (Serde)    | normalisation | YAML − 1 | `deserialize_precedence`     |
+| Pipeline interne | 0-based       | [0, 12]  | —                            |
+| `.kald` / Engine | 0-based       | [0, 12]  | — (identique au pipeline)    |
 
 ---
 

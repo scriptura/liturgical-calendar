@@ -1,0 +1,64 @@
+version: 1
+category: 1
+date:
+  month: 3
+  day: 25
+
+history:
+  - from: 1969
+    precedence: 3
+    nature: sollemnitas
+    color: albus
+    transfers:
+      # --- BRANCHEMENT SEMAINE SAINTE (Prec 1) ---
+      # Redirection déterministe vers le lundi de la IIe semaine de Pâques
+      - collides: dominica_in_palmis
+        mobile:
+          anchor: pascha
+          offset: 8
+      - collides: feria_ii_in_hebdomada_sancta
+        mobile:
+          anchor: pascha
+          offset: 8
+      - collides: feria_iii_in_hebdomada_sancta
+        mobile:
+          anchor: pascha
+          offset: 8
+      - collides: feria_iv_in_hebdomada_sancta
+        mobile:
+          anchor: pascha
+          offset: 8
+      - collides: feria_v_in_cena_domini
+        mobile:
+          anchor: pascha
+          offset: 8
+      - collides: feria_vi_in_passione_domini
+        mobile:
+          anchor: pascha
+          offset: 8
+      - collides: sabbato_sancto
+        mobile:
+          anchor: pascha
+          offset: 8
+
+      # --- BRANCHEMENT OCTAVE DE PÂQUES (Prec 1) ---
+      # Invariant : L'Octave est un bloc d'exclusion totale.
+      # Exclusion totale de la plage Pascha[0] à Pascha[7]
+      # Le dispatch vers Pascha + 8 (Lundi de la IIe semaine) est statique.
+      - collides: dominica_resurrectionis
+        mobile:
+          anchor: pascha
+          offset: 8
+      - collides: infra_octavam_paschae
+        mobile:
+          anchor: pascha
+          offset: 8
+      - collides: dominica_ii_paschae
+        mobile:
+          anchor: pascha
+          offset: 8
+
+      # NOTE SUR L'OPTIMISATION DU PIPELINE :
+      # Les collisions avec les dimanches de Carême (Prec 2) ne sont pas listées.
+      # L'Engine applique la règle par défaut : Prec 2 > Prec 4.
+      # Sans règle 'mobile' explicite, la TransferQueue alloue automatiquement DOY + 1.

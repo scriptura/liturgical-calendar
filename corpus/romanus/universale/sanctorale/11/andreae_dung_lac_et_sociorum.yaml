@@ -1,0 +1,10 @@
+version: 1
+category: 1
+date:
+  month: 11
+  day: 24
+history:
+  - from: 1988
+    precedence: 10
+    nature: memoria
+    color: rubeus

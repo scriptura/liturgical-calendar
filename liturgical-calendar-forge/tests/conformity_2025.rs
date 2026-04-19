@@ -31,13 +31,13 @@ use liturgical_calendar_forge::{
 // ---------------------------------------------------------------------------
 
 fn tmp() -> PathBuf {
-    // CARGO_TARGET_TMPDIR est défini à la compilation par Cargo pour les
-    // tests d'intégration (stable depuis Rust 1.53).
     PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("conformity_2025")
 }
 
 /// Corpus minimal : uniquement Dominica Resurrectionis (Pâques).
-/// Suffisant pour valider le pipeline complet sans dépendance au corpus réel.
+///
+/// YAML precedence: 2 → interne 1 (SollemnitatesFixaeMaior),
+/// conforme à la Tabella dierum liturgicorum 1969, rang I.
 fn minimal_registry() -> FeastRegistry {
     let mut registry = FeastRegistry::new();
 
@@ -48,7 +48,7 @@ mobile:
   anchor: pascha
   offset: 0
 history:
-  - precedence: 1
+  - precedence: 2
     nature: sollemnitas
     color: albus
     season: pascha
@@ -58,25 +58,15 @@ history:
         .expect("parse dominica_resurrectionis");
     registry.insert(feast);
 
-    // Samedi Saint (doy Pâques - 1) — a une Vigile propre pour le test bit [15].
-    // La Vigile Pascale est rattachée au slot du Samedi Saint dans le pipeline.
-    // Pas de feast YAML nécessaire : le bit est posé par vespers_lookahead_pass
-    // automatiquement dès que le slot suivant (Pâques) a has_vigil_mass=false
-    // mais est une Sollemnitas de precedence 1.
-    // → Le bit vesperae_i ([14]) est testé côté Samedi Saint.
-
     registry
 }
 
 /// Construit l'arborescence i18n minimale dans `base_dir`.
-/// Retourne le chemin `i18n/` racine.
 fn setup_i18n(base_dir: &PathBuf) -> PathBuf {
     let i18n_root = base_dir.join("i18n");
     let la_dir    = i18n_root.join("la");
     fs::create_dir_all(&la_dir).unwrap();
 
-    // Dictionnaire latin pour dominica_resurrectionis.
-    // Format : { from_year: { title: "..." } }
     let content = "1969:\n  title: \"Dominica Resurrectionis\"\n";
     fs::write(la_dir.join("dominica_resurrectionis.yaml"), content).unwrap();
 
@@ -84,12 +74,8 @@ fn setup_i18n(base_dir: &PathBuf) -> PathBuf {
 }
 
 // ---------------------------------------------------------------------------
-// Fixture — compilée une seule fois, partagée par tous les tests via lazy init.
+// Fixture — compilée une seule fois via OnceLock.
 // ---------------------------------------------------------------------------
-//
-// Rust n'a pas de `#[fixture]` natif, mais les tests d'intégration s'exécutent
-// dans le même processus pour un même fichier. On utilise `std::sync::OnceLock`
-// pour garantir un seul appel à `compile`.
 
 use std::sync::OnceLock;
 
@@ -97,7 +83,6 @@ struct Fixture {
     kald_bytes: Vec<u8>,
     lits_bytes: Vec<u8>,
     kald_checksum: [u8; 32],
-    /// DOY (0-based) de Pâques 2025 calculé par la Forge.
     easter_doy: u16,
 }
 
@@ -117,7 +102,7 @@ fn fixture() -> &'static Fixture {
         let kald_checksum = compile(
             registry,
             &kald,
-            0, // variant_id = Romanus
+            0,
             Some(I18nConfig { i18n_root: &i18n_root, lits_dir: &lits_dir }),
         )
         .expect("compile doit réussir");
@@ -125,7 +110,6 @@ fn fixture() -> &'static Fixture {
         let kald_bytes = fs::read(&kald).expect("lecture .kald");
         let lits_bytes = fs::read(lits_dir.join("la.lits")).expect("lecture la.lits");
 
-        // Easter 2025 : doy calculé par la Forge (0-based, identique au pipeline).
         let easter_doy = compute_easter(2025);
 
         Fixture { kald_bytes, lits_bytes, kald_checksum, easter_doy }
@@ -133,7 +117,7 @@ fn fixture() -> &'static Fixture {
 }
 
 // ---------------------------------------------------------------------------
-// 1. kal_validate_header — intégrité structurelle du .kald
+// 1. kal_validate_header
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -167,7 +151,6 @@ fn kald_read_entry_all_366_slots_2025() {
 
 #[test]
 fn kald_padding_entry_doy_59_non_leap() {
-    // 2025 est non-bissextile → le slot Feb 29 (doy=59) est une Padding Entry.
     let f = fixture();
     let mut entry = CalendarEntry::zeroed();
     let rc = unsafe {
@@ -199,15 +182,11 @@ fn kald_easter_2025_entry_coherent() {
         "Pâques 2025 (doy={}) ne doit pas être une Padding Entry", doy
     );
     let nature = entry.nature().expect("nature doit être valide");
-    assert_eq!(
-        nature,
-        Nature::Sollemnitas,
-        "Pâques est une Sollemnitas"
-    );
+    assert_eq!(nature, Nature::Sollemnitas, "Pâques est une Sollemnitas");
 }
 
 // ---------------------------------------------------------------------------
-// 5. Bits vespers [14:15] — doy Pâques-1 (Samedi Saint) a le bit vesperae_i
+// 5. Bits vespers [14:15] — Samedi Saint a le bit vesperae_i
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -215,9 +194,6 @@ fn kald_vesperae_i_bit_sabbato_sancto() {
     let f   = fixture();
     let doy = f.easter_doy;
 
-    // Le Samedi Saint (doy - 1) doit avoir le bit vesperae_i posé (Premières
-    // Vêpres de Pâques commencent ce soir).
-    // Cas limite : si doy == 0 (impossible pour Pâques), le test serait ignoré.
     if doy == 0 { return; }
 
     let mut entry = CalendarEntry::zeroed();
@@ -243,8 +219,6 @@ fn kald_vesperae_i_bit_sabbato_sancto() {
 fn lits_provider_get_easter_2025() {
     let f = fixture();
 
-    // Récupère le FeastID de Pâques depuis le .kald (robuste, indépendant
-    // de la stratégie d'allocation d'assign_feast_ids).
     let mut entry = CalendarEntry::zeroed();
     let rc = unsafe {
         kal_read_entry(
@@ -261,10 +235,7 @@ fn lits_provider_get_easter_2025() {
     let label = provider.get(entry.primary_id, 2025)
         .expect("LitsProvider::get doit retourner un label pour Pâques 2025");
 
-    assert_eq!(
-        label, "Dominica Resurrectionis",
-        "label latin inattendu : {:?}", label
-    );
+    assert_eq!(label, "Dominica Resurrectionis", "label latin inattendu : {:?}", label);
 }
 
 // ---------------------------------------------------------------------------
@@ -275,10 +246,8 @@ fn lits_provider_get_easter_2025() {
 fn kald_build_id_coherent_with_lits() {
     let f = fixture();
 
-    // kald_build_id = kald_checksum[..8] (spec §9.4)
     let expected_build_id = &f.kald_checksum[..8];
 
-    // Bytes 12–19 du header .lits = kald_build_id
     assert!(
         f.lits_bytes.len() >= 20,
         ".lits trop court pour contenir un header valide"

@@ -1,0 +1,11 @@
+version: 1
+category: 0
+mobile:
+  anchor: pascha
+  offset: 2
+history:
+  - from: 1969
+    precedence: 2
+    nature: sollemnitas
+    color: albus
+    season: tempus_paschale

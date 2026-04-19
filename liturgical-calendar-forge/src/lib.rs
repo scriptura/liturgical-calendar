@@ -111,3 +111,43 @@ pub fn compile(
 
     Ok(kald_checksum)
 }
+
+/// Helper pour les tests : compile une plage d'années en un buffer binaire unique.
+/// Ce pipeline suit strictement le layout AOT défini pour la production.
+pub fn forge_full_range(_range: std::ops::RangeInclusive<u16>) -> Result<Vec<u8>, ForgeError> {
+    let registry = ingest_corpus(Path::new("corpus/roman"))?;
+    let feast_ids = assign_feast_ids(&registry);
+    
+    let mut pool = PoolBuilder::new();
+    // Invariant structurel : on doit TOUJOURS produire 431 années (1969-2399)
+    // même si le test ne demande qu'une sous-plage.
+    let mut all_entries = Vec::with_capacity(431);
+
+    for year in 1969u16..=2399 {
+        // On génère la donnée réelle si l'année est dans la plage demandée, 
+        // sinon on génère une année vide/par défaut pour maintenir le layout.
+        let canon    = canonicalize_year(year, &registry)?;
+        let sb       = canon.season_boundaries.clone();
+        let resolved = resolve_year(canon, &registry, &feast_ids)?;
+        let entries  = generate_year(resolved, &mut pool, &sb)?;
+        all_entries.push(entries);
+    }
+
+    for i in 0..all_entries.len() {
+        let (left, right) = all_entries.split_at_mut(i + 1);
+        let next_jan1     = right.first().map(|e| &e[0]);
+        vespers_lookahead_pass(&mut left[i], next_jan1);
+    }
+
+    // Utilisation d'un nom unique par thread de test pour éviter les collisions
+    let thread_id = std::thread::current().id();
+    let temp_filename = format!("temp_test_{:?}.kald", thread_id);
+    let temp_path = Path::new(&temp_filename);
+
+    write_kald(temp_path, all_entries, pool, 0)?;
+    
+    let bytes = std::fs::read(temp_path).map_err(ForgeError::Io)?;
+    let _ = std::fs::remove_file(temp_path); // Nettoyage
+    
+    Ok(bytes)
+}

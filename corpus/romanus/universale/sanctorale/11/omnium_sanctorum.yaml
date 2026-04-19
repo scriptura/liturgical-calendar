@@ -1,0 +1,10 @@
+version: 1
+category: 1
+date:
+  month: 11
+  day: 1
+history:
+  - from: 1969
+    precedence: 3
+    nature: sollemnitas
+    color: albus
