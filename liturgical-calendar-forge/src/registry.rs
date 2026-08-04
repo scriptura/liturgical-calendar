@@ -1,5 +1,5 @@
-use std::collections::BTreeMap;
 pub use crate::lock::FeastRegistryLock;
+use std::collections::BTreeMap;
 
 // ---------------------------------------------------------------------------
 // Enums sémantiques — INV-FORGE-DERIVE : PartialOrd + Ord requis
@@ -49,9 +49,9 @@ pub enum LiturgicalPeriod {
 /// Valeur plus faible = priorité plus haute à rang de préséance égal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LiturgicalClass {
-    Lord   = 0, // Fêtes du Seigneur
+    Lord = 0,   // Fêtes du Seigneur
     Virgin = 1, // Fêtes de la Vierge Marie
-    Saint  = 2, // Fêtes des Saints
+    Saint = 2,  // Fêtes des Saints
     Proper = 3, // Propres locaux (patron, titulaire, dédicace)
 }
 
@@ -62,8 +62,8 @@ pub enum LiturgicalClass {
 #[derive(Debug, Clone)]
 pub enum Scope {
     Universal,
-    National(String),  // code ISO-3166-1
-    Diocesan(String),  // identifiant diocésain
+    National(String), // code ISO-3166-1
+    Diocesan(String), // identifiant diocésain
 }
 
 // ---------------------------------------------------------------------------
@@ -112,15 +112,15 @@ pub struct TransferDef {
 /// Correspondance avec `FeastVersionDef` du schème v1.7.0.
 #[derive(Debug, Clone)]
 pub struct FeastHistoryEntry {
-    pub from:           u16,
-    pub to:             u16,
-    pub precedence:     Option<u8>,
-    pub nature:         Option<Nature>,
-    pub color:          Option<Color>,
-    pub period:         Option<LiturgicalPeriod>,
+    pub from: u16,
+    pub to: u16,
+    pub precedence: Option<u8>,
+    pub nature: Option<Nature>,
+    pub color: Option<Color>,
+    pub period: Option<LiturgicalPeriod>,
     pub has_vigil_mass: bool,
     /// Règles de transfert scoped à cette tranche temporelle (vide si absent dans le YAML)
-    pub transfers:      Vec<TransferDef>,
+    pub transfers: Vec<TransferDef>,
 }
 
 // ---------------------------------------------------------------------------
@@ -129,19 +129,19 @@ pub struct FeastHistoryEntry {
 
 #[derive(Debug, Clone)]
 pub struct FeastDef {
-    pub slug:        String,
-    pub scope:       Scope,
+    pub slug: String,
+    pub scope: Scope,
     /// 0 = temporale universel, 1 = sanctorale
-    pub category:    u8,
+    pub category: u8,
     /// Identifiant numérique optionnel (Martyrologium Romanum)
-    pub id:          Option<u16>,
+    pub id: Option<u16>,
     /// None autorisé pour les deltas purs (temporalité héritée de l'universale au merge).
     pub temporality: Option<Temporality>,
     /// Classe liturgique du sujet — ADR-038.
     /// None autorisé dans les deltas (continentalia/nationalia) sans surcharge de classe.
     /// Obligatoire après merge pour toute fête active dans une année résolue.
-    pub class:       Option<LiturgicalClass>,
-    pub history:     Vec<FeastHistoryEntry>,
+    pub class: Option<LiturgicalClass>,
+    pub history: Vec<FeastHistoryEntry>,
 }
 
 impl FeastDef {
@@ -163,7 +163,9 @@ pub struct FeastRegistry {
 
 impl FeastRegistry {
     pub fn new() -> Self {
-        Self { feasts: BTreeMap::new() }
+        Self {
+            feasts: BTreeMap::new(),
+        }
     }
 
     /// Insère ou remplace (slug = clé)
@@ -184,8 +186,12 @@ impl FeastRegistry {
         self.feasts.values()
     }
 
-    pub fn len(&self) -> usize { self.feasts.len() }
-    pub fn is_empty(&self) -> bool { self.feasts.is_empty() }
+    pub fn len(&self) -> usize {
+        self.feasts.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.feasts.is_empty()
+    }
 
     /// Fusionne un delta dans l'entrée existante, ou insère si absente.
     ///
@@ -221,5 +227,7 @@ impl FeastRegistry {
 }
 
 impl Default for FeastRegistry {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }

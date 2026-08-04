@@ -1,7 +1,7 @@
+use crate::error::ForgeError;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::Path;
-use serde::{Deserialize, Serialize};
-use crate::error::ForgeError;
 
 /// Contenu du `variant_registry.lock`.
 ///
@@ -13,7 +13,7 @@ use crate::error::ForgeError;
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct VariantRegistryLock {
     /// scope → variant_id actifs.
-    pub entries:    BTreeMap<String, u16>,
+    pub entries: BTreeMap<String, u16>,
     /// scope → variant_id tombstonés (jamais réalloués).
     pub tombstones: BTreeMap<String, u16>,
 }
@@ -22,7 +22,7 @@ impl VariantRegistryLock {
     /// Charge depuis le disque. Retourne `Default` si le fichier est absent (premier build).
     pub fn load(path: &Path) -> Result<Self, ForgeError> {
         match std::fs::read_to_string(path) {
-            Ok(s)  => toml::from_str::<Self>(&s)
+            Ok(s) => toml::from_str::<Self>(&s)
                 .map_err(|e: toml::de::Error| ForgeError::LockFileMalformed(e.to_string())),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
             Err(e) => Err(ForgeError::Io(e)),

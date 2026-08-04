@@ -32,9 +32,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 // --- Imports Core (Types binaires optimisés) ---
 use liturgical_calendar_core::{
-    Color as CoreColor,
-    Nature as CoreNature,
-    LiturgicalPeriod as CorePeriod,
+    Color as CoreColor, LiturgicalPeriod as CorePeriod, Nature as CoreNature,
 };
 
 // --- Import Registry (Contrat YAML / Ingestion) ---
@@ -43,14 +41,12 @@ use crate::registry::LiturgicalPeriod as RegistryPeriod;
 
 use crate::{
     canonicalization::{
-        is_leap_year, resolve_tempus_ordinarium_dispatch,
-        resolve_tempus_ordinarium_post_epiphaniam, CanonicalizedYear, MONTH_STARTS,
+        CanonicalizedYear, MONTH_STARTS, is_leap_year, resolve_tempus_ordinarium_dispatch,
+        resolve_tempus_ordinarium_post_epiphaniam,
     },
     error::ForgeError,
     registry::{
-        FeastDef, FeastRegistry, Scope,
-        Temporality as RegistryTemporality,
-        TransferTarget,
+        FeastDef, FeastRegistry, Scope, Temporality as RegistryTemporality, TransferTarget,
     },
 };
 
@@ -59,13 +55,13 @@ use crate::{
 /// Transforme la période du Registre vers le type binaire du Core.
 pub(crate) fn period_to_core(p: &RegistryPeriod) -> CorePeriod {
     match p {
-        RegistryPeriod::TempusOrdinarium    => CorePeriod::TempusOrdinarium,
-        RegistryPeriod::TempusAdventus      => CorePeriod::TempusAdventus,
-        RegistryPeriod::TempusNativitatis   => CorePeriod::TempusNativitatis,
+        RegistryPeriod::TempusOrdinarium => CorePeriod::TempusOrdinarium,
+        RegistryPeriod::TempusAdventus => CorePeriod::TempusAdventus,
+        RegistryPeriod::TempusNativitatis => CorePeriod::TempusNativitatis,
         RegistryPeriod::TempusQuadragesimae => CorePeriod::TempusQuadragesimae,
-        RegistryPeriod::TriduumPaschale     => CorePeriod::TriduumPaschale,
-        RegistryPeriod::TempusPaschale      => CorePeriod::TempusPaschale,
-        RegistryPeriod::DiesSancti          => CorePeriod::DiesSancti,
+        RegistryPeriod::TriduumPaschale => CorePeriod::TriduumPaschale,
+        RegistryPeriod::TempusPaschale => CorePeriod::TempusPaschale,
+        RegistryPeriod::DiesSancti => CorePeriod::DiesSancti,
     }
 }
 
@@ -79,25 +75,25 @@ pub(crate) type FeastIdMap = BTreeMap<String, u16>;
 fn color_to_core(c: &crate::registry::Color) -> CoreColor {
     use crate::registry::Color as R;
     match c {
-        R::Albus     => CoreColor::Albus,
-        R::Rubeus    => CoreColor::Rubeus,
-        R::Viridis   => CoreColor::Viridis,
+        R::Albus => CoreColor::Albus,
+        R::Rubeus => CoreColor::Rubeus,
+        R::Viridis => CoreColor::Viridis,
         R::Violaceus => CoreColor::Violaceus,
-        R::Rosaceus  => CoreColor::Rosaceus,
-        R::Niger     => CoreColor::Niger,
-        R::Aureus    => CoreColor::Albus, // réservé Core v2.0 — fallback Albus
+        R::Rosaceus => CoreColor::Rosaceus,
+        R::Niger => CoreColor::Niger,
+        R::Aureus => CoreColor::Albus, // réservé Core v2.0 — fallback Albus
     }
 }
 
 fn nature_to_core(n: &crate::registry::Nature) -> CoreNature {
     use crate::registry::Nature as R;
     match n {
-        R::Sollemnitas  => CoreNature::Sollemnitas,
-        R::Festum       => CoreNature::Festum,
-        R::Dominica     => CoreNature::Dominica,
-        R::Memoria      => CoreNature::Memoria,
+        R::Sollemnitas => CoreNature::Sollemnitas,
+        R::Festum => CoreNature::Festum,
+        R::Dominica => CoreNature::Dominica,
+        R::Memoria => CoreNature::Memoria,
         R::Commemoratio => CoreNature::Commemoratio,
-        R::Feria        => CoreNature::Feria,
+        R::Feria => CoreNature::Feria,
     }
 }
 
@@ -105,7 +101,7 @@ fn nature_to_core(n: &crate::registry::Nature) -> CoreNature {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Cycle {
-    Temporal  = 0,
+    Temporal = 0,
     Sanctoral = 1,
 }
 
@@ -114,23 +110,23 @@ pub(crate) enum Cycle {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct ResolutionKey {
     pub sort_weight: u16,
-    pub feast_id:    u16,
+    pub feast_id: u16,
 }
 
 // ─── PlacedFeast ──────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PlacedFeast {
-    pub slug:           String,
-    pub feast_id:       u16,
-    pub scope_bits:     u8,
-    pub precedence:     u8,
-    pub class:          u8,
-    pub nature:         CoreNature,
-    pub color:          CoreColor,
-    pub period:         Option<CorePeriod>,
+    pub slug: String,
+    pub feast_id: u16,
+    pub scope_bits: u8,
+    pub precedence: u8,
+    pub class: u8,
+    pub nature: CoreNature,
+    pub color: CoreColor,
+    pub period: Option<CorePeriod>,
     pub has_vigil_mass: bool,
-    pub cycle:          Cycle,
+    pub cycle: Cycle,
 }
 
 impl PlacedFeast {
@@ -138,23 +134,27 @@ impl PlacedFeast {
     fn key(&self) -> ResolutionKey {
         ResolutionKey {
             sort_weight: (self.precedence as u16) * 256 + (self.class as u16),
-            feast_id:    self.feast_id,
+            feast_id: self.feast_id,
         }
     }
 }
 
 impl PartialOrd for PlacedFeast {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> { Some(self.cmp(other)) }
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
 }
 impl Ord for PlacedFeast {
-    fn cmp(&self, other: &Self) -> Ordering { self.key().cmp(&other.key()) }
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.key().cmp(&other.key())
+    }
 }
 
 // ─── ResolvedDay / ResolvedCalendar ──────────────────────────────────────────
 
 #[derive(Debug, Clone)]
 pub(crate) struct ResolvedDay {
-    pub primary:          PlacedFeast,
+    pub primary: PlacedFeast,
     pub secondary_feasts: Vec<PlacedFeast>,
 }
 
@@ -168,9 +168,9 @@ pub(crate) struct ResolvedCalendar {
 #[derive(Debug, Clone, Eq, PartialEq)]
 struct TransferEntry {
     doy_current: u16,
-    feast_id:    u16,
-    depth:       u8,
-    feast:       PlacedFeast,
+    feast_id: u16,
+    depth: u8,
+    feast: PlacedFeast,
 }
 
 impl Ord for TransferEntry {
@@ -179,7 +179,9 @@ impl Ord for TransferEntry {
     }
 }
 impl PartialOrd for TransferEntry {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> { Some(self.cmp(other)) }
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 const MAX_TRANSFER_DEPTH: u8 = 7;
@@ -189,14 +191,22 @@ struct TransferQueue {
 }
 
 impl TransferQueue {
-    fn new() -> Self { Self { pending: BTreeSet::new() } }
+    fn new() -> Self {
+        Self {
+            pending: BTreeSet::new(),
+        }
+    }
 
     fn enqueue(
-        &mut self, doy_src: u16, feast: PlacedFeast, depth: u8, year: u16,
+        &mut self,
+        doy_src: u16,
+        feast: PlacedFeast,
+        depth: u8,
+        year: u16,
     ) -> Result<(), ForgeError> {
         if depth > MAX_TRANSFER_DEPTH {
             return Err(ForgeError::TransferFailed {
-                slug:       feast.slug.clone(),
+                slug: feast.slug.clone(),
                 origin_doy: doy_src.saturating_sub(depth as u16),
                 blocked_at: doy_src,
                 year,
@@ -217,23 +227,25 @@ impl TransferQueue {
         Some(e)
     }
 
-    fn is_empty(&self) -> bool { self.pending.is_empty() }
+    fn is_empty(&self) -> bool {
+        self.pending.is_empty()
+    }
 }
 
 // ─── Déclassement saisonnier — §3.4 ─────────────────────────────────────────
 
 pub(crate) fn should_demote_to_commemoratio(
-    feast:  &PlacedFeast,
+    feast: &PlacedFeast,
     period: CorePeriod,
-    doy:    u16,
+    doy: u16,
 ) -> bool {
     if feast.nature != CoreNature::Memoria {
         return false;
     }
     match period {
-        CorePeriod::TempusQuadragesimae
-        | CorePeriod::TriduumPaschale
-        | CorePeriod::DiesSancti => true,
+        CorePeriod::TempusQuadragesimae | CorePeriod::TriduumPaschale | CorePeriod::DiesSancti => {
+            true
+        }
         CorePeriod::TempusAdventus => {
             // NUALC n°16 : déclassement limité au 17–24 décembre.
             // `doy` est en pseudo-DOY (slot 59 réservé au 29 fév., boucle 0..=365) :
@@ -266,20 +278,26 @@ fn feast_doy(feast_def: &FeastDef, anchors: &BTreeMap<String, u16>, year: u16) -
             (0..=365).contains(&doy).then_some(doy as u16)
         }
         RegistryTemporality::Ordinal { ordinal } => {
-            let adventus        = *anchors.get("adventus")?;
+            let adventus = *anchors.get("adventus")?;
             let post_epiphaniam = resolve_tempus_ordinarium_post_epiphaniam(year);
             Some(resolve_tempus_ordinarium_dispatch(
-                year, post_epiphaniam, adventus, *ordinal,
+                year,
+                post_epiphaniam,
+                adventus,
+                *ordinal,
             ))
         }
     }
 }
 
 fn feast_cycle(feast_def: &FeastDef) -> Cycle {
-    match feast_def.temporality.as_ref().expect("temporality absente après merge") {
-        RegistryTemporality::Fixed { .. }         => Cycle::Sanctoral,
-        RegistryTemporality::Mobile { .. }
-        | RegistryTemporality::Ordinal { .. }     => Cycle::Temporal,
+    match feast_def
+        .temporality
+        .as_ref()
+        .expect("temporality absente après merge")
+    {
+        RegistryTemporality::Fixed { .. } => Cycle::Sanctoral,
+        RegistryTemporality::Mobile { .. } | RegistryTemporality::Ordinal { .. } => Cycle::Temporal,
     }
 }
 
@@ -287,14 +305,14 @@ fn feast_cycle(feast_def: &FeastDef) -> Cycle {
 
 fn elect(
     mut candidates: Vec<PlacedFeast>,
-    period:         CorePeriod,
-    doy:            u16,
+    period: CorePeriod,
+    doy: u16,
 ) -> (PlacedFeast, Vec<PlacedFeast>, Vec<PlacedFeast>) {
     // §3.4 — Mutation in-place avant tri canonique.
     for feast in &mut candidates {
         if should_demote_to_commemoratio(feast, period, doy) {
             feast.precedence = 11;
-            feast.nature     = CoreNature::Commemoratio;
+            feast.nature = CoreNature::Commemoratio;
         }
     }
 
@@ -327,10 +345,10 @@ fn elect(
 
 pub(crate) fn resolve_year(
     canonicalized: CanonicalizedYear,
-    registry:      &FeastRegistry,
-    feast_ids:     &FeastIdMap,
+    registry: &FeastRegistry,
+    feast_ids: &FeastIdMap,
 ) -> Result<ResolvedCalendar, ForgeError> {
-    let year    = canonicalized.year;
+    let year = canonicalized.year;
     let is_leap = is_leap_year(year);
 
     // ── PASSE 1 ───────────────────────────────────────────────────────────────
@@ -340,62 +358,92 @@ pub(crate) fn resolve_year(
     for feast_def in registry.iter() {
         let version = match feast_def.active_version_for(year) {
             Some(v) => v,
-            None    => continue,
+            None => continue,
         };
 
         let doy = match feast_doy(feast_def, &canonicalized.anchors, canonicalized.year) {
             Some(d) => d,
-            None    => continue,
+            None => continue,
         };
 
-        if !is_leap && doy == 59 { continue; }
+        if !is_leap && doy == 59 {
+            continue;
+        }
 
         let feast_id = match feast_ids.get(&feast_def.slug) {
             Some(&id) => id,
-            None      => continue,
+            None => continue,
         };
 
         let scope_bits: u8 = match &feast_def.scope {
-            Scope::Universal   => 0,
+            Scope::Universal => 0,
             Scope::National(_) => 1,
             Scope::Diocesan(_) => 2,
         };
 
         let cycle = feast_cycle(feast_def);
 
-        let precedence = version.precedence
-            .ok_or_else(|| {
-                eprintln!("ERREUR: Champ 'precedence' manquant pour le slug: {}", feast_def.slug);
-                ForgeError::MissingResolvedField { feast_id, year, doy, field: "precedence" }
-            })?;
+        let precedence = version.precedence.ok_or_else(|| {
+            eprintln!(
+                "ERREUR: Champ 'precedence' manquant pour le slug: {}",
+                feast_def.slug
+            );
+            ForgeError::MissingResolvedField {
+                feast_id,
+                year,
+                doy,
+                field: "precedence",
+            }
+        })?;
 
-        let nature_val = version.nature.as_ref()
-            .ok_or_else(|| {
-                eprintln!("ERREUR: Champ 'nature' manquant pour le slug: {}", feast_def.slug);
-                ForgeError::MissingResolvedField { feast_id, year, doy, field: "nature" }
-            })?;
+        let nature_val = version.nature.as_ref().ok_or_else(|| {
+            eprintln!(
+                "ERREUR: Champ 'nature' manquant pour le slug: {}",
+                feast_def.slug
+            );
+            ForgeError::MissingResolvedField {
+                feast_id,
+                year,
+                doy,
+                field: "nature",
+            }
+        })?;
 
-        let color_val = version.color.as_ref()
-            .ok_or_else(|| {
-                eprintln!("ERREUR: Champ 'color' manquant pour le slug: {}", feast_def.slug);
-                ForgeError::MissingResolvedField { feast_id, year, doy, field: "color" }
-            })?;
+        let color_val = version.color.as_ref().ok_or_else(|| {
+            eprintln!(
+                "ERREUR: Champ 'color' manquant pour le slug: {}",
+                feast_def.slug
+            );
+            ForgeError::MissingResolvedField {
+                feast_id,
+                year,
+                doy,
+                field: "color",
+            }
+        })?;
 
-        let class: u8 = feast_def.class
-            .ok_or_else(|| {
-                eprintln!("ERREUR: Champ 'class' manquant pour le slug: {}", feast_def.slug);
-                ForgeError::MissingResolvedField { feast_id, year, doy, field: "class" }
-            })? as u8;
+        let class: u8 = feast_def.class.ok_or_else(|| {
+            eprintln!(
+                "ERREUR: Champ 'class' manquant pour le slug: {}",
+                feast_def.slug
+            );
+            ForgeError::MissingResolvedField {
+                feast_id,
+                year,
+                doy,
+                field: "class",
+            }
+        })? as u8;
 
         slots.entry(doy).or_default().push(PlacedFeast {
-            slug:           feast_def.slug.clone(),
+            slug: feast_def.slug.clone(),
             feast_id,
             scope_bits,
             precedence,
             class,
-            nature:         nature_to_core(nature_val),
-            color:          color_to_core(color_val),
-            period:         version.period.as_ref().map(period_to_core),
+            nature: nature_to_core(nature_val),
+            color: color_to_core(color_val),
+            period: version.period.as_ref().map(period_to_core),
             has_vigil_mass: version.has_vigil_mass,
             cycle,
         });
@@ -409,17 +457,19 @@ pub(crate) fn resolve_year(
             let very_high: Vec<_> = candidates.iter().filter(|f| f.precedence <= 1).collect();
             if very_high.len() >= 2 {
                 return Err(ForgeError::SolemnityCollision {
-                    slug_a:     very_high[0].slug.clone(),
-                    slug_b:     very_high[1].slug.clone(),
+                    slug_a: very_high[0].slug.clone(),
+                    slug_b: very_high[1].slug.clone(),
                     precedence: very_high[0].precedence,
-                    doy, year,
+                    doy,
+                    year,
                 });
             }
         }
 
         // V7b : SollemnitatesGenerales (2) et SollemnitatesPropria (3).
         {
-            let solemn: Vec<_> = candidates.iter()
+            let solemn: Vec<_> = candidates
+                .iter()
                 .filter(|f| f.precedence >= 2 && f.precedence <= 3)
                 .collect();
             for i in 0..solemn.len() {
@@ -428,10 +478,11 @@ pub(crate) fn resolve_year(
                         && solemn[i].class == solemn[j].class
                     {
                         return Err(ForgeError::SolemnityCollision {
-                            slug_a:     solemn[i].slug.clone(),
-                            slug_b:     solemn[j].slug.clone(),
+                            slug_a: solemn[i].slug.clone(),
+                            slug_b: solemn[j].slug.clone(),
                             precedence: solemn[i].precedence,
-                            doy, year,
+                            doy,
+                            year,
                         });
                     }
                 }
@@ -440,7 +491,8 @@ pub(crate) fn resolve_year(
 
         // §3.1 — scope le plus local prime pour les Solennités.
         if candidates.iter().filter(|f| f.precedence <= 3).count() >= 2 {
-            let max_scope = candidates.iter()
+            let max_scope = candidates
+                .iter()
                 .filter(|f| f.precedence <= 3)
                 .map(|f| f.scope_bits)
                 .max()
@@ -451,28 +503,37 @@ pub(crate) fn resolve_year(
 
     // ── PASSE 3 ───────────────────────────────────────────────────────────────
 
-    let mut resolved_days:      BTreeMap<u16, ResolvedDay>      = BTreeMap::new();
-    let mut transfer_queue                                      = TransferQueue::new();
-    let mut pending_inserts:    BTreeMap<u16, Vec<PlacedFeast>> = BTreeMap::new();
-    let mut retrograde_inserts: Vec<(u16, PlacedFeast)>         = Vec::new();
+    let mut resolved_days: BTreeMap<u16, ResolvedDay> = BTreeMap::new();
+    let mut transfer_queue = TransferQueue::new();
+    let mut pending_inserts: BTreeMap<u16, Vec<PlacedFeast>> = BTreeMap::new();
+    let mut retrograde_inserts: Vec<(u16, PlacedFeast)> = Vec::new();
 
     for doy in 0u16..=365u16 {
         let mut candidates: Vec<PlacedFeast> = slots.remove(&doy).unwrap_or_default();
         if let Some(fwd) = pending_inserts.remove(&doy) {
             candidates.extend(fwd);
         }
-        if candidates.is_empty() { continue; }
+        if candidates.is_empty() {
+            continue;
+        }
 
         let period = canonicalized.season_boundaries.period_of(doy);
         let (primary, secondary_feasts, to_transfer) = elect(candidates, period, doy);
 
         for feast in to_transfer {
-            let active_rule = registry.get(&feast.slug)
+            let active_rule = registry
+                .get(&feast.slug)
                 .and_then(|def| def.active_version_for(year))
-                .and_then(|ver| ver.transfers.iter().find(|t| t.collides.iter().any(|c| c == &primary.slug)));
+                .and_then(|ver| {
+                    ver.transfers
+                        .iter()
+                        .find(|t| t.collides.iter().any(|c| c == &primary.slug))
+                });
 
             if let Some(rule) = active_rule {
-                let matched_collides = rule.collides.iter()
+                let matched_collides = rule
+                    .collides
+                    .iter()
                     .find(|c| *c == &primary.slug)
                     .cloned()
                     .unwrap();
@@ -507,7 +568,13 @@ pub(crate) fn resolve_year(
             }
         }
 
-        resolved_days.insert(doy, ResolvedDay { primary, secondary_feasts });
+        resolved_days.insert(
+            doy,
+            ResolvedDay {
+                primary,
+                secondary_feasts,
+            },
+        );
     }
 
     retrograde_inserts.sort_unstable_by_key(|(d, _)| *d);
@@ -517,28 +584,39 @@ pub(crate) fn resolve_year(
             let mut all = vec![day.primary.clone(), feast];
             all.extend(day.secondary_feasts.clone());
             let (new_primary, new_secondary, _) = elect(all, period, doy_dst);
-            day.primary          = new_primary;
+            day.primary = new_primary;
             day.secondary_feasts = new_secondary;
         } else {
-            resolved_days.insert(doy_dst, ResolvedDay {
-                primary: feast, secondary_feasts: Vec::new(),
-            });
+            resolved_days.insert(
+                doy_dst,
+                ResolvedDay {
+                    primary: feast,
+                    secondary_feasts: Vec::new(),
+                },
+            );
         }
     }
 
     // ── PASSE 4 ───────────────────────────────────────────────────────────────
 
     while let Some(entry) = transfer_queue.pop_first() {
-        let TransferEntry { doy_current, feast, depth, .. } = entry;
+        let TransferEntry {
+            doy_current,
+            feast,
+            depth,
+            ..
+        } = entry;
         let mut placed = false;
 
         let window_end = (doy_current + 7).min(365);
         for doy_dst in (doy_current + 1)..=window_end {
             let slot_free = match resolved_days.get(&doy_dst) {
                 Some(day) => day.primary.precedence > feast.precedence,
-                None      => true,
+                None => true,
             };
-            if !slot_free { continue; }
+            if !slot_free {
+                continue;
+            }
 
             let period = canonicalized.season_boundaries.period_of(doy_dst);
             let mut all = vec![feast.clone()];
@@ -550,16 +628,20 @@ pub(crate) fn resolve_year(
             for d in displaced {
                 transfer_queue.enqueue(doy_dst, d, depth + 1, year)?;
             }
-            resolved_days.insert(doy_dst, ResolvedDay {
-                primary: new_primary, secondary_feasts: new_secondary,
-            });
+            resolved_days.insert(
+                doy_dst,
+                ResolvedDay {
+                    primary: new_primary,
+                    secondary_feasts: new_secondary,
+                },
+            );
             placed = true;
             break;
         }
 
         if !placed {
             return Err(ForgeError::TransferFailed {
-                slug:       feast.slug.clone(),
+                slug: feast.slug.clone(),
                 origin_doy: doy_current.saturating_sub(depth as u16),
                 blocked_at: doy_current,
                 year,
@@ -567,7 +649,10 @@ pub(crate) fn resolve_year(
         }
     }
 
-    debug_assert!(transfer_queue.is_empty(), "TransferQueue non vide après Passe 4");
+    debug_assert!(
+        transfer_queue.is_empty(),
+        "TransferQueue non vide après Passe 4"
+    );
 
     // ── PASSE 5 ───────────────────────────────────────────────────────────────
     //
@@ -578,17 +663,22 @@ pub(crate) fn resolve_year(
 
     for (&doy, day) in &resolved_days {
         if let Some(&expected_id) = feast_ids.get(&day.primary.slug)
-            && expected_id != day.primary.feast_id {
-                return Err(ForgeError::FeastIDMutated {
-                    slug:        day.primary.slug.clone(),
-                    expected_id,
-                    found_id:    day.primary.feast_id,
-                    doy, year,
-                });
-            }
+            && expected_id != day.primary.feast_id
+        {
+            return Err(ForgeError::FeastIDMutated {
+                slug: day.primary.slug.clone(),
+                expected_id,
+                found_id: day.primary.feast_id,
+                doy,
+                year,
+            });
+        }
     }
 
-    Ok(ResolvedCalendar { year, days: resolved_days })
+    Ok(ResolvedCalendar {
+        year,
+        days: resolved_days,
+    })
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -602,16 +692,16 @@ mod tests {
     /// Zéro-allocation hors du String du slug.
     fn make_memoria(slug: &str, feast_id: u16, precedence: u8) -> PlacedFeast {
         PlacedFeast {
-            slug:           slug.to_string(),
+            slug: slug.to_string(),
             feast_id,
-            scope_bits:     0,
+            scope_bits: 0,
             precedence,
-            class:          0,
-            nature:         CoreNature::Memoria,
-            color:          CoreColor::Albus,
-            period:         None,
+            class: 0,
+            nature: CoreNature::Memoria,
+            color: CoreColor::Albus,
+            period: None,
             has_vigil_mass: false,
-            cycle:          Cycle::Sanctoral,
+            cycle: Cycle::Sanctoral,
         }
     }
 
@@ -633,7 +723,8 @@ mod tests {
             "Invariant brisé : precedence dégradée hors de la plage 17–24 déc."
         );
         assert_eq!(
-            primary.nature, CoreNature::Memoria,
+            primary.nature,
+            CoreNature::Memoria,
             "Invariant brisé : nature mutée en Commemoratio hors de la plage 17–24 déc."
         );
     }
@@ -647,10 +738,15 @@ mod tests {
         let feast = make_memoria("o_sapientia", 2, 9);
         let (primary, _, _) = elect(vec![feast], CorePeriod::TempusAdventus, doy_dec_17);
 
-        assert_eq!(primary.precedence, 11u8,
-            "Invariant brisé : precedence non mutée à 11 au 17 déc.");
-        assert_eq!(primary.nature, CoreNature::Commemoratio,
-            "Invariant brisé : nature non mutée en Commemoratio au 17 déc.");
+        assert_eq!(
+            primary.precedence, 11u8,
+            "Invariant brisé : precedence non mutée à 11 au 17 déc."
+        );
+        assert_eq!(
+            primary.nature,
+            CoreNature::Commemoratio,
+            "Invariant brisé : nature non mutée en Commemoratio au 17 déc."
+        );
     }
 
     // ── Carême — déclassement MemoriaeObligatoriaGenerales (prec. 9) ─────────
@@ -669,7 +765,8 @@ mod tests {
             "Invariant brisé : precedence non dégradée à 11 (MemoriaeAdLibitum) en Carême."
         );
         assert_eq!(
-            primary.nature, CoreNature::Commemoratio,
+            primary.nature,
+            CoreNature::Commemoratio,
             "Invariant brisé : nature non mutée en Commemoratio en Carême."
         );
     }
@@ -683,8 +780,10 @@ mod tests {
         let feast = make_memoria("test_propria", 4, 10);
         let (primary, _, _) = elect(vec![feast], CorePeriod::TempusQuadragesimae, doy_mar_7);
 
-        assert_eq!(primary.precedence, 11u8,
-            "Invariant brisé : MemoriaeObligatoriaePropria non dégradée en Carême.");
+        assert_eq!(
+            primary.precedence, 11u8,
+            "Invariant brisé : MemoriaeObligatoriaePropria non dégradée en Carême."
+        );
         assert_eq!(primary.nature, CoreNature::Commemoratio);
     }
 
@@ -697,9 +796,14 @@ mod tests {
         let feast = make_memoria("test_ad_libitum", 5, 11);
         let (primary, _, _) = elect(vec![feast], CorePeriod::TempusQuadragesimae, doy_mar_7);
 
-        assert_eq!(primary.precedence, 11u8,
-            "Invariant : la précédence d'une mémoire facultative reste fixée à 11.");
-        assert_eq!(primary.nature, CoreNature::Commemoratio,
-            "Invariant brisé : la nature de la mémoire facultative n'a pas muté en Commemoratio.");
+        assert_eq!(
+            primary.precedence, 11u8,
+            "Invariant : la précédence d'une mémoire facultative reste fixée à 11."
+        );
+        assert_eq!(
+            primary.nature,
+            CoreNature::Commemoratio,
+            "Invariant brisé : la nature de la mémoire facultative n'a pas muté en Commemoratio."
+        );
     }
 }

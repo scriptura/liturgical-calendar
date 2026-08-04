@@ -14,18 +14,16 @@ use std::fs;
 use std::path::PathBuf;
 
 use liturgical_calendar_core::{
-    entry::{FeastEntry, TimelineEntry},
-    lits_provider::LitsProvider,
-    kal_read_entry, kal_read_feast, kal_validate_header,
-    types::Nature,
     KAL_ENGINE_OK,
+    entry::{FeastEntry, TimelineEntry},
+    kal_read_entry, kal_read_feast, kal_validate_header,
+    lits_provider::LitsProvider,
+    types::Nature,
 };
 
 use liturgical_calendar_forge::{
-    compile, I18nConfig, FeastRegistry,
-    canonicalization::compute_easter,
-    parsing::parse_feast_from_yaml,
-    registry::Scope,
+    FeastRegistry, I18nConfig, canonicalization::compute_easter, compile,
+    parsing::parse_feast_from_yaml, registry::Scope,
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -60,8 +58,7 @@ history:
 fn setup_i18n(base_dir: &PathBuf) -> PathBuf {
     let la_dir = base_dir.join("universale").join("i18n").join("la");
     fs::create_dir_all(&la_dir).unwrap();
-    let content =
-        "version: 1\nhistory:\n  - from: 1969\n    label: \"Dominica Resurrectionis\"\n";
+    let content = "version: 1\nhistory:\n  - from: 1969\n    label: \"Dominica Resurrectionis\"\n";
     fs::write(la_dir.join("dominica_resurrectionis.yaml"), content).unwrap();
     base_dir.to_owned()
 }
@@ -71,33 +68,33 @@ fn setup_i18n(base_dir: &PathBuf) -> PathBuf {
 use std::sync::OnceLock;
 
 struct Fixture {
-    kald_bytes:    Vec<u8>,
-    lits_bytes:    Vec<u8>,
+    kald_bytes: Vec<u8>,
+    lits_bytes: Vec<u8>,
     kald_checksum: [u8; 32],
-    easter_doy:    u16,
+    easter_doy: u16,
 }
 
 static FIXTURE: OnceLock<Fixture> = OnceLock::new();
 
 fn fixture() -> &'static Fixture {
     FIXTURE.get_or_init(|| {
-        let base     = tmp();
-        let kald     = base.join("test.kald");
+        let base = tmp();
+        let kald = base.join("test.kald");
         let lits_dir = base.join("lits");
 
         fs::create_dir_all(&lits_dir).unwrap();
 
         let _i18n_root = setup_i18n(&base);
-        let registry   = minimal_registry();
+        let registry = minimal_registry();
 
         let kald_checksum = compile(
             registry,
             &kald,
             0,
             Some(I18nConfig {
-                i18n_root:  &base,
+                i18n_root: &base,
                 scope_path: Some("universale"),
-                lits_dir:   &lits_dir,
+                lits_dir: &lits_dir,
             }),
             &base.join("feast_registry.lock"),
         )
@@ -107,7 +104,12 @@ fn fixture() -> &'static Fixture {
         let lits_bytes = fs::read(lits_dir.join("la.lits")).expect("lecture la.lits");
         let easter_doy = compute_easter(2025);
 
-        Fixture { kald_bytes, lits_bytes, kald_checksum, easter_doy }
+        Fixture {
+            kald_bytes,
+            lits_bytes,
+            kald_checksum,
+            easter_doy,
+        }
     })
 }
 
@@ -115,9 +117,13 @@ fn fixture() -> &'static Fixture {
 
 #[test]
 fn kald_validate_header_ok() {
-    let f  = fixture();
+    let f = fixture();
     let rc = unsafe {
-        kal_validate_header(f.kald_bytes.as_ptr(), f.kald_bytes.len(), std::ptr::null_mut())
+        kal_validate_header(
+            f.kald_bytes.as_ptr(),
+            f.kald_bytes.len(),
+            std::ptr::null_mut(),
+        )
     };
     assert_eq!(rc, KAL_ENGINE_OK, "kal_validate_header doit retourner OK");
 }
@@ -126,7 +132,7 @@ fn kald_validate_header_ok() {
 
 #[test]
 fn kald_read_entry_all_366_slots_2025() {
-    let f   = fixture();
+    let f = fixture();
     let ptr = f.kald_bytes.as_ptr();
     let len = f.kald_bytes.len();
 
@@ -135,17 +141,24 @@ fn kald_read_entry_all_366_slots_2025() {
         let rc = unsafe { kal_read_entry(ptr, len, 2025, doy, &mut entry) };
         assert_eq!(
             rc, KAL_ENGINE_OK,
-            "kal_read_entry(2025, doy={}) doit retourner OK", doy
+            "kal_read_entry(2025, doy={}) doit retourner OK",
+            doy
         );
     }
 }
 
 #[test]
 fn kald_padding_entry_doy_59_non_leap() {
-    let f   = fixture();
+    let f = fixture();
     let mut entry = TimelineEntry::zeroed();
     let rc = unsafe {
-        kal_read_entry(f.kald_bytes.as_ptr(), f.kald_bytes.len(), 2025, 59, &mut entry)
+        kal_read_entry(
+            f.kald_bytes.as_ptr(),
+            f.kald_bytes.len(),
+            2025,
+            59,
+            &mut entry,
+        )
     };
     assert_eq!(rc, KAL_ENGINE_OK);
     assert!(
@@ -159,7 +172,7 @@ fn kald_padding_entry_doy_59_non_leap() {
 
 #[test]
 fn kald_easter_2025_entry_coherent() {
-    let f   = fixture();
+    let f = fixture();
     let doy = f.easter_doy;
     let ptr = f.kald_bytes.as_ptr();
     let len = f.kald_bytes.len();
@@ -167,12 +180,19 @@ fn kald_easter_2025_entry_coherent() {
     let mut entry = TimelineEntry::zeroed();
     let rc = unsafe { kal_read_entry(ptr, len, 2025, doy, &mut entry) };
     assert_eq!(rc, KAL_ENGINE_OK);
-    assert_ne!(entry.primary_index, 0, "Pâques 2025 (doy={}) ne doit pas être Padding", doy);
+    assert_ne!(
+        entry.primary_index, 0,
+        "Pâques 2025 (doy={}) ne doit pas être Padding",
+        doy
+    );
 
     // Résolution des invariants via kal_read_feast.
     let mut feast = FeastEntry::zeroed();
     let rc_feast = unsafe { kal_read_feast(ptr, len, entry.primary_index, &mut feast) };
-    assert_eq!(rc_feast, KAL_ENGINE_OK, "kal_read_feast doit réussir pour Pâques");
+    assert_eq!(
+        rc_feast, KAL_ENGINE_OK,
+        "kal_read_feast doit réussir pour Pâques"
+    );
 
     let nature = feast.nature().expect("nature doit être valide");
     assert_eq!(nature, Nature::Sollemnitas, "Pâques est une Sollemnitas");
@@ -182,23 +202,29 @@ fn kald_easter_2025_entry_coherent() {
 
 #[test]
 fn kald_vesperae_i_bit_sabbato_sancto() {
-    let f   = fixture();
+    let f = fixture();
     let doy = f.easter_doy;
 
-    if doy == 0 { return; }
+    if doy == 0 {
+        return;
+    }
 
     let mut entry = TimelineEntry::zeroed();
     let rc = unsafe {
         kal_read_entry(
-            f.kald_bytes.as_ptr(), f.kald_bytes.len(),
-            2025, doy - 1, &mut entry,
+            f.kald_bytes.as_ptr(),
+            f.kald_bytes.len(),
+            2025,
+            doy - 1,
+            &mut entry,
         )
     };
     assert_eq!(rc, KAL_ENGINE_OK);
     assert!(
         entry.has_vesperae_i(),
         "Samedi Saint (doy={}) doit avoir HAS_VESPERAE_I (occurrence_flags=0b{:02b})",
-        doy - 1, entry.occurrence_flags
+        doy - 1,
+        entry.occurrence_flags
     );
 }
 
@@ -206,7 +232,7 @@ fn kald_vesperae_i_bit_sabbato_sancto() {
 
 #[test]
 fn lits_provider_get_easter_2025() {
-    let f   = fixture();
+    let f = fixture();
     let ptr = f.kald_bytes.as_ptr();
     let len = f.kald_bytes.len();
 
@@ -222,15 +248,17 @@ fn lits_provider_get_easter_2025() {
     assert_eq!(rc_feast, KAL_ENGINE_OK);
     assert_ne!(feast.feast_id, 0, "feast_id de Pâques doit être non nul");
 
-    let provider = LitsProvider::new(&f.lits_bytes)
-        .expect("LitsProvider::new doit réussir sur la.lits");
+    let provider =
+        LitsProvider::new(&f.lits_bytes).expect("LitsProvider::new doit réussir sur la.lits");
 
-    let label = provider.get(feast.feast_id, 2025)
+    let label = provider
+        .get(feast.feast_id, 2025)
         .expect("LitsProvider::get doit retourner un label pour Pâques 2025");
 
     assert_eq!(
         label.label, "Dominica Resurrectionis",
-        "label latin inattendu : {:?}", label.label
+        "label latin inattendu : {:?}",
+        label.label
     );
 }
 

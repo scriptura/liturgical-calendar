@@ -22,13 +22,8 @@
 
 use liturgical_calendar_core::{
     ffi::{
-        KAL_ENGINE_OK,
-        KAL_ERR_BUF_TOO_SMALL,
-        KAL_ERR_FILE_SIZE,
-        KAL_ERR_INDEX_OOB,
-        KAL_ERR_MAGIC,
-        KAL_ERR_NULL_PTR,
-        KAL_ERR_VERSION,
+        KAL_ENGINE_OK, KAL_ERR_BUF_TOO_SMALL, KAL_ERR_FILE_SIZE, KAL_ERR_INDEX_OOB, KAL_ERR_MAGIC,
+        KAL_ERR_NULL_PTR, KAL_ERR_VERSION,
     },
     lits_provider::{LitsError, LitsProvider},
 };
@@ -63,12 +58,12 @@ use liturgical_calendar_core::{
 /// - Les pointeurs retournés restent valides tant que `lits_bytes` est en vie.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn kal_lits_get_label(
-    lits_bytes:         *const u8,
-    lits_len:           usize,
-    feast_id:           u16,
-    year:               u16,
-    out_label_ptr:      *mut *const u8,
-    out_label_len:      *mut usize,
+    lits_bytes: *const u8,
+    lits_len: usize,
+    feast_id: u16,
+    year: u16,
+    out_label_ptr: *mut *const u8,
+    out_label_len: *mut usize,
     out_annotation_ptr: *mut *const u8, // nullable
     out_annotation_len: *mut usize,     // nullable
 ) -> i32 {
@@ -79,18 +74,20 @@ pub unsafe extern "C" fn kal_lits_get_label(
     let data = unsafe { core::slice::from_raw_parts(lits_bytes, lits_len) };
 
     let provider = match LitsProvider::new(data) {
-        Ok(p)  => p,
-        Err(e) => return match e {
-            LitsError::BufferTooShort           => KAL_ERR_BUF_TOO_SMALL,
-            LitsError::InvalidMagic             => KAL_ERR_MAGIC,
-            LitsError::UnsupportedVersion(_)    => KAL_ERR_VERSION,
-            LitsError::CorruptLayout            => KAL_ERR_FILE_SIZE,
-        },
+        Ok(p) => p,
+        Err(e) => {
+            return match e {
+                LitsError::BufferTooShort => KAL_ERR_BUF_TOO_SMALL,
+                LitsError::InvalidMagic => KAL_ERR_MAGIC,
+                LitsError::UnsupportedVersion(_) => KAL_ERR_VERSION,
+                LitsError::CorruptLayout => KAL_ERR_FILE_SIZE,
+            };
+        }
     };
 
     let entry = match provider.get(feast_id, year) {
         Some(e) => e,
-        None    => return KAL_ERR_INDEX_OOB,
+        None => return KAL_ERR_INDEX_OOB,
     };
 
     unsafe {
@@ -134,9 +131,14 @@ mod tests {
         let mut label_len: usize = 0;
         let rc = unsafe {
             kal_lits_get_label(
-                core::ptr::null(), 0, 0, 0,
-                &mut label_ptr, &mut label_len,
-                core::ptr::null_mut(), core::ptr::null_mut(),
+                core::ptr::null(),
+                0,
+                0,
+                0,
+                &mut label_ptr,
+                &mut label_len,
+                core::ptr::null_mut(),
+                core::ptr::null_mut(),
             )
         };
         assert_eq!(rc, KAL_ERR_NULL_PTR);
@@ -148,9 +150,14 @@ mod tests {
         let mut label_len: usize = 0;
         let rc = unsafe {
             kal_lits_get_label(
-                buf.as_ptr(), buf.len(), 0, 0,
-                core::ptr::null_mut(), &mut label_len,
-                core::ptr::null_mut(), core::ptr::null_mut(),
+                buf.as_ptr(),
+                buf.len(),
+                0,
+                0,
+                core::ptr::null_mut(),
+                &mut label_len,
+                core::ptr::null_mut(),
+                core::ptr::null_mut(),
             )
         };
         assert_eq!(rc, KAL_ERR_NULL_PTR);
@@ -163,9 +170,14 @@ mod tests {
         let mut label_len: usize = 0;
         let rc = unsafe {
             kal_lits_get_label(
-                buf.as_ptr(), buf.len(), 42, 2024,
-                &mut label_ptr, &mut label_len,
-                core::ptr::null_mut(), core::ptr::null_mut(),
+                buf.as_ptr(),
+                buf.len(),
+                42,
+                2024,
+                &mut label_ptr,
+                &mut label_len,
+                core::ptr::null_mut(),
+                core::ptr::null_mut(),
             )
         };
         assert_eq!(rc, KAL_ERR_INDEX_OOB);
@@ -179,9 +191,14 @@ mod tests {
         let mut label_len: usize = 0;
         let rc = unsafe {
             kal_lits_get_label(
-                buf.as_ptr(), buf.len(), 0, 0,
-                &mut label_ptr, &mut label_len,
-                core::ptr::null_mut(), core::ptr::null_mut(),
+                buf.as_ptr(),
+                buf.len(),
+                0,
+                0,
+                &mut label_ptr,
+                &mut label_len,
+                core::ptr::null_mut(),
+                core::ptr::null_mut(),
             )
         };
         assert_eq!(rc, KAL_ERR_MAGIC);
@@ -194,9 +211,14 @@ mod tests {
         let mut label_len: usize = 0;
         let rc = unsafe {
             kal_lits_get_label(
-                buf.as_ptr(), buf.len(), 0, 0,
-                &mut label_ptr, &mut label_len,
-                core::ptr::null_mut(), core::ptr::null_mut(),
+                buf.as_ptr(),
+                buf.len(),
+                0,
+                0,
+                &mut label_ptr,
+                &mut label_len,
+                core::ptr::null_mut(),
+                core::ptr::null_mut(),
             )
         };
         assert_eq!(rc, KAL_ERR_BUF_TOO_SMALL);
@@ -209,9 +231,14 @@ mod tests {
         let mut label_len: usize = 0;
         let rc = unsafe {
             kal_lits_get_label(
-                buf.as_ptr(), buf.len(), 0, 0,
-                &mut label_ptr, &mut label_len,
-                core::ptr::null_mut(), core::ptr::null_mut(),
+                buf.as_ptr(),
+                buf.len(),
+                0,
+                0,
+                &mut label_ptr,
+                &mut label_len,
+                core::ptr::null_mut(),
+                core::ptr::null_mut(),
             )
         };
         assert_eq!(rc, KAL_ERR_INDEX_OOB);

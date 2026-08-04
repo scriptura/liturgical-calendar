@@ -3,8 +3,8 @@ use std::collections::BTreeSet;
 
 use crate::error::{ForgeError, ParseError, RegistryError};
 use crate::registry::{
-    Color, FeastDef, FeastHistoryEntry, LiturgicalClass, LiturgicalPeriod,
-    Nature, Scope, Temporality, TransferDef, TransferTarget,
+    Color, FeastDef, FeastHistoryEntry, LiturgicalClass, LiturgicalPeriod, Nature, Scope,
+    Temporality, TransferDef, TransferTarget,
 };
 
 // ---------------------------------------------------------------------------
@@ -49,8 +49,8 @@ where
         Many(Vec<String>),
     }
     match OneOrMany::deserialize(d)? {
-        OneOrMany::One(s)   => Ok(vec![s]),
-        OneOrMany::Many(v)  => Ok(v),
+        OneOrMany::One(s) => Ok(vec![s]),
+        OneOrMany::Many(v) => Ok(v),
     }
 }
 
@@ -61,29 +61,32 @@ where
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct YamlFeast {
-    version:   u32,
-    category:  u8,
-    id:        Option<u16>,
-    date:      Option<YamlDate>,
-    mobile:    Option<YamlMobile>,
+    version: u32,
+    category: u8,
+    id: Option<u16>,
+    date: Option<YamlDate>,
+    mobile: Option<YamlMobile>,
     #[serde(default)]
-    history:   Vec<YamlHistoryEntry>,
+    history: Vec<YamlHistoryEntry>,
     /// Classe liturgique du sujet — ADR-038.
     /// Optionnel au parsing (deltas peuvent l'omettre).
     /// Validé présent après merge dans resolve_year (MissingResolvedField).
     #[serde(default)]
-    class:     Option<String>,
+    class: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct YamlDate { month: u8, day: u8 }
+struct YamlDate {
+    month: u8,
+    day: u8,
+}
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct YamlMobile {
-    anchor:  String,
-    offset:  Option<i32>,
+    anchor: String,
+    offset: Option<i32>,
     ordinal: Option<u8>,
 }
 
@@ -92,9 +95,9 @@ struct YamlMobile {
 struct YamlTransfer {
     #[serde(deserialize_with = "deserialize_collides")]
     collides: Vec<String>,
-    offset:   Option<u32>,
-    date:     Option<YamlDate>,
-    mobile:   Option<YamlMobileDst>,
+    offset: Option<u32>,
+    date: Option<YamlDate>,
+    mobile: Option<YamlMobileDst>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -107,15 +110,15 @@ struct YamlMobileDst {
 #[derive(Debug, Clone, serde::Deserialize, Default)]
 #[serde(deny_unknown_fields, default)]
 struct YamlHistoryEntry {
-    from:           Option<u16>,
-    to:             Option<u16>,
+    from: Option<u16>,
+    to: Option<u16>,
     #[serde(default, deserialize_with = "deserialize_precedence_opt")]
-    precedence:     Option<u8>,
-    nature:         Option<String>,
-    color:          Option<String>,
-    period:         Option<String>,
+    precedence: Option<u8>,
+    nature: Option<String>,
+    color: Option<String>,
+    period: Option<String>,
     has_vigil_mass: Option<bool>,
-    transfers:      Option<Vec<YamlTransfer>>,  // scoped à cette tranche temporelle
+    transfers: Option<Vec<YamlTransfer>>, // scoped à cette tranche temporelle
 }
 
 // ---------------------------------------------------------------------------
@@ -126,10 +129,10 @@ pub(crate) fn validate_slug(stem: &str) -> Result<(), ParseError> {
     let mut chars = stem.chars();
     match chars.next() {
         None | Some('0'..='9') | Some('_') => {
-            return Err(ParseError::InvalidSlugSyntax(stem.to_string()))
+            return Err(ParseError::InvalidSlugSyntax(stem.to_string()));
         }
         Some(c) if !c.is_ascii_lowercase() => {
-            return Err(ParseError::InvalidSlugSyntax(stem.to_string()))
+            return Err(ParseError::InvalidSlugSyntax(stem.to_string()));
         }
         _ => {}
     }
@@ -147,21 +150,24 @@ pub(crate) fn validate_slug(stem: &str) -> Result<(), ParseError> {
 
 fn parse_nature(s: &str) -> Result<Nature, RegistryError> {
     match s {
-        "sollemnitas"  => Ok(Nature::Sollemnitas),
-        "festum"       => Ok(Nature::Festum),
-        "dominica"     => Ok(Nature::Dominica),
-        "memoria"      => Ok(Nature::Memoria),
+        "sollemnitas" => Ok(Nature::Sollemnitas),
+        "festum" => Ok(Nature::Festum),
+        "dominica" => Ok(Nature::Dominica),
+        "memoria" => Ok(Nature::Memoria),
         "commemoratio" => Ok(Nature::Commemoratio),
-        "feria"        => Ok(Nature::Feria),
+        "feria" => Ok(Nature::Feria),
         other => {
             let hint = match other {
                 "solemnity" | "solemnnitas" | "solemnitas" => " (hint: 'sollemnitas')",
-                "feast"    => " (hint: 'festum')",
+                "feast" => " (hint: 'festum')",
                 "memorial" | "memory" => " (hint: 'memoria')",
                 "commemoration" => " (hint: 'commemoratio')",
                 _ => "",
             };
-            Err(RegistryError::UnknownNatureString(format!("{}{}", other, hint)))
+            Err(RegistryError::UnknownNatureString(format!(
+                "{}{}",
+                other, hint
+            )))
         }
     }
 }
@@ -172,13 +178,13 @@ fn parse_nature(s: &str) -> Result<Nature, RegistryError> {
 
 fn parse_color(s: &str) -> Result<Color, RegistryError> {
     match s {
-        "white" | "albus"              => Ok(Color::Albus),
-        "red"   | "rubeus"             => Ok(Color::Rubeus),
-        "green" | "viridis"            => Ok(Color::Viridis),
-        "purple"| "violet"|"violaceus" => Ok(Color::Violaceus),
-        "rose"  | "rosaceus"           => Ok(Color::Rosaceus),
-        "black" | "niger"              => Ok(Color::Niger),
-        "gold"  | "aureus"             => Ok(Color::Aureus),
+        "white" | "albus" => Ok(Color::Albus),
+        "red" | "rubeus" => Ok(Color::Rubeus),
+        "green" | "viridis" => Ok(Color::Viridis),
+        "purple" | "violet" | "violaceus" => Ok(Color::Violaceus),
+        "rose" | "rosaceus" => Ok(Color::Rosaceus),
+        "black" | "niger" => Ok(Color::Niger),
+        "gold" | "aureus" => Ok(Color::Aureus),
         other => Err(RegistryError::UnknownColorString(other.to_string())),
     }
 }
@@ -189,13 +195,13 @@ fn parse_color(s: &str) -> Result<Color, RegistryError> {
 
 fn parse_period(s: &str) -> Result<LiturgicalPeriod, RegistryError> {
     match s {
-        "tempus_ordinarium"    => Ok(LiturgicalPeriod::TempusOrdinarium),
-        "tempus_adventus"      => Ok(LiturgicalPeriod::TempusAdventus),
-        "tempus_nativitatis"   => Ok(LiturgicalPeriod::TempusNativitatis),
+        "tempus_ordinarium" => Ok(LiturgicalPeriod::TempusOrdinarium),
+        "tempus_adventus" => Ok(LiturgicalPeriod::TempusAdventus),
+        "tempus_nativitatis" => Ok(LiturgicalPeriod::TempusNativitatis),
         "tempus_quadragesimae" => Ok(LiturgicalPeriod::TempusQuadragesimae),
-        "triduum_paschale"     => Ok(LiturgicalPeriod::TriduumPaschale),
-        "tempus_paschale"      => Ok(LiturgicalPeriod::TempusPaschale),
-        "dies_sancti"          => Ok(LiturgicalPeriod::DiesSancti),
+        "triduum_paschale" => Ok(LiturgicalPeriod::TriduumPaschale),
+        "tempus_paschale" => Ok(LiturgicalPeriod::TempusPaschale),
+        "dies_sancti" => Ok(LiturgicalPeriod::DiesSancti),
         other => Err(RegistryError::UnknownPeriodString(other.to_string())),
     }
 }
@@ -206,9 +212,9 @@ fn parse_period(s: &str) -> Result<LiturgicalPeriod, RegistryError> {
 
 fn parse_class(s: &str) -> Result<LiturgicalClass, RegistryError> {
     match s {
-        "lord"   => Ok(LiturgicalClass::Lord),
+        "lord" => Ok(LiturgicalClass::Lord),
         "virgin" => Ok(LiturgicalClass::Virgin),
-        "saint"  => Ok(LiturgicalClass::Saint),
+        "saint" => Ok(LiturgicalClass::Saint),
         "proper" => Ok(LiturgicalClass::Proper),
         other => Err(RegistryError::UnknownClassString(other.to_string())),
     }
@@ -220,7 +226,11 @@ fn parse_class(s: &str) -> Result<LiturgicalClass, RegistryError> {
 
 fn validate_date(slug: &str, month: u8, day: u8) -> Result<(), ParseError> {
     if !(1..=12).contains(&month) {
-        return Err(ParseError::InvalidDate { slug: slug.to_string(), month, day });
+        return Err(ParseError::InvalidDate {
+            slug: slug.to_string(),
+            month,
+            day,
+        });
     }
     let max_day: u8 = match month {
         1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
@@ -229,7 +239,11 @@ fn validate_date(slug: &str, month: u8, day: u8) -> Result<(), ParseError> {
         _ => unreachable!(),
     };
     if !(1..=max_day).contains(&day) {
-        return Err(ParseError::InvalidDate { slug: slug.to_string(), month, day });
+        return Err(ParseError::InvalidDate {
+            slug: slug.to_string(),
+            month,
+            day,
+        });
     }
     Ok(())
 }
@@ -239,7 +253,11 @@ fn validate_date(slug: &str, month: u8, day: u8) -> Result<(), ParseError> {
 // ---------------------------------------------------------------------------
 
 const PRIMITIVE_ANCHORS: &[&str] = &[
-    "pascha", "adventus", "pentecostes", "nativitas", "epiphania",
+    "pascha",
+    "adventus",
+    "pentecostes",
+    "nativitas",
+    "epiphania",
 ];
 
 // ---------------------------------------------------------------------------
@@ -250,21 +268,30 @@ fn parse_mobile_temporality(slug: &str, m: &YamlMobile) -> Result<Temporality, F
     if m.anchor == "tempus_ordinarium" {
         // V4a — tempus_ordinarium : offset interdit, ordinal obligatoire [1,34]
         if m.offset.is_some() {
-            return Err(ParseError::OffsetOnOrdinalAnchor { slug: slug.to_string() }.into());
+            return Err(ParseError::OffsetOnOrdinalAnchor {
+                slug: slug.to_string(),
+            }
+            .into());
         }
-        let ordinal = m.ordinal
-            .ok_or_else(|| ParseError::MissingOrdinal { slug: slug.to_string() })?;
+        let ordinal = m.ordinal.ok_or_else(|| ParseError::MissingOrdinal {
+            slug: slug.to_string(),
+        })?;
         if !(1..=34).contains(&ordinal) {
-            return Err(ParseError::OrdinalOutOfRange { slug: slug.to_string(), ordinal }.into());
+            return Err(ParseError::OrdinalOutOfRange {
+                slug: slug.to_string(),
+                ordinal,
+            }
+            .into());
         }
         Ok(Temporality::Ordinal { ordinal })
     } else {
         // V4a — ancre ordinaire : ordinal interdit
         if m.ordinal.is_some() {
             return Err(ParseError::OrdinalOnNonOrdinalAnchor {
-                slug:   slug.to_string(),
+                slug: slug.to_string(),
                 anchor: m.anchor.clone(),
-            }.into());
+            }
+            .into());
         }
         let offset = m.offset.unwrap_or(0);
         // Desugaring pentecostes → pascha + 49
@@ -281,14 +308,15 @@ fn parse_mobile_temporality(slug: &str, m: &YamlMobile) -> Result<Temporality, F
 // Parsing history (V2-Bis, V3b, V2d, V5, V-Natura-Memoria, V-Vigilia)
 // ---------------------------------------------------------------------------
 
-fn parse_history(slug: &str, entries: &[YamlHistoryEntry])
-    -> Result<Vec<FeastHistoryEntry>, ForgeError>
-{
+fn parse_history(
+    slug: &str,
+    entries: &[YamlHistoryEntry],
+) -> Result<Vec<FeastHistoryEntry>, ForgeError> {
     let mut result: Vec<FeastHistoryEntry> = Vec::with_capacity(entries.len());
 
     for entry in entries {
         let from = entry.from.unwrap_or(1969);
-        let to   = entry.to.unwrap_or(2399);
+        let to = entry.to.unwrap_or(2399);
 
         // V3b — plages temporelles
         if from < 1969 || to > 2399 || from > to {
@@ -305,31 +333,36 @@ fn parse_history(slug: &str, entries: &[YamlHistoryEntry])
         );
 
         let nature = entry.nature.as_deref().map(parse_nature).transpose()?;
-        let color  = entry.color.as_deref().map(parse_color).transpose()?;
+        let color = entry.color.as_deref().map(parse_color).transpose()?;
         let period = entry.period.as_deref().map(parse_period).transpose()?;
         let has_vigil_mass = entry.has_vigil_mass.unwrap_or(false);
 
         // V-Natura-Memoria — applicable uniquement si les deux champs sont présents.
         if let (Some(nat), Some(prec)) = (nature.as_ref(), precedence)
-            && *nat == Nature::Memoria && !matches!(prec, 9..=11) {
-                return Err(ParseError::InvalidMemoriaPrecedence {
-                    slug:             slug.to_string(),
-                    from,
-                    found_precedence: prec,
-                }.into());
+            && *nat == Nature::Memoria
+            && !matches!(prec, 9..=11)
+        {
+            return Err(ParseError::InvalidMemoriaPrecedence {
+                slug: slug.to_string(),
+                from,
+                found_precedence: prec,
             }
+            .into());
+        }
 
         // V-Vigilia — applicable uniquement si nature est présente.
         if has_vigil_mass && nature.as_ref().is_some_and(|n| *n != Nature::Sollemnitas) {
             return Err(ParseError::VigiliaNonSollemnitas {
-                slug:   slug.to_string(),
+                slug: slug.to_string(),
                 from,
                 nature: entry.nature.clone().unwrap_or_default(),
-            }.into());
+            }
+            .into());
         }
 
         // V-T* — transfers scoped à cette entrée history
-        let transfers = entry.transfers
+        let transfers = entry
+            .transfers
             .as_deref()
             .map(|ts| parse_transfers(slug, from, ts))
             .transpose()?
@@ -353,15 +386,16 @@ fn parse_history(slug: &str, entries: &[YamlHistoryEntry])
     Ok(result)
 }
 
-fn check_temporal_overlap(slug: &str, entries: &[FeastHistoryEntry])
-    -> Result<(), ForgeError>
-{
+fn check_temporal_overlap(slug: &str, entries: &[FeastHistoryEntry]) -> Result<(), ForgeError> {
     let mut sorted: Vec<&FeastHistoryEntry> = entries.iter().collect();
     sorted.sort_by_key(|e| e.from);
     for i in 1..sorted.len() {
         if sorted[i].from <= sorted[i - 1].to {
-            eprintln!("[DEBUG] TemporalOverlap : slug={slug}  from[i]={} <= to[i-1]={}",
-                sorted[i].from, sorted[i - 1].to);
+            eprintln!(
+                "[DEBUG] TemporalOverlap : slug={slug}  from[i]={} <= to[i-1]={}",
+                sorted[i].from,
+                sorted[i - 1].to
+            );
             return Err(RegistryError::TemporalOverlap.into());
         }
     }
@@ -372,9 +406,11 @@ fn check_temporal_overlap(slug: &str, entries: &[FeastHistoryEntry])
 // Parsing transfers (V-T1..V-T5, desucrage pentecostes dans mobile)
 // ---------------------------------------------------------------------------
 
-fn parse_transfers(slug: &str, from: u16, transfers: &[YamlTransfer])
-    -> Result<Vec<TransferDef>, ForgeError>
-{
+fn parse_transfers(
+    slug: &str,
+    from: u16,
+    transfers: &[YamlTransfer],
+) -> Result<Vec<TransferDef>, ForgeError> {
     let mut result: Vec<TransferDef> = Vec::with_capacity(transfers.len());
     let mut seen: BTreeSet<&str> = BTreeSet::new();
 
@@ -382,25 +418,32 @@ fn parse_transfers(slug: &str, from: u16, transfers: &[YamlTransfer])
         // V-T3 — unicité de collides dans cette tranche temporelle
         for c in &t.collides {
             if !seen.insert(c.as_str()) {
-            return Err(ParseError::TransferDuplicateCollides {
-                slug:     slug.to_string(),
-                from,
-                collides: c.clone(),
-            }.into());
+                return Err(ParseError::TransferDuplicateCollides {
+                    slug: slug.to_string(),
+                    from,
+                    collides: c.clone(),
+                }
+                .into());
             }
         }
 
         // V-T1 — exactement une option
-        let count = t.offset.is_some() as u8
-                  + t.date.is_some() as u8
-                  + t.mobile.is_some() as u8;
+        let count = t.offset.is_some() as u8 + t.date.is_some() as u8 + t.mobile.is_some() as u8;
         match count {
-            0 => return Err(ParseError::TransferEmpty {
-                slug: slug.to_string(), collides: t.collides.join(", ")
-            }.into()),
-            2.. => return Err(ParseError::TransferAmbiguous {
-                slug: slug.to_string(), collides: t.collides.join(", ")
-            }.into()),
+            0 => {
+                return Err(ParseError::TransferEmpty {
+                    slug: slug.to_string(),
+                    collides: t.collides.join(", "),
+                }
+                .into());
+            }
+            2.. => {
+                return Err(ParseError::TransferAmbiguous {
+                    slug: slug.to_string(),
+                    collides: t.collides.join(", "),
+                }
+                .into());
+            }
             _ => {}
         }
 
@@ -408,23 +451,28 @@ fn parse_transfers(slug: &str, from: u16, transfers: &[YamlTransfer])
             // V-T4 — offset ≥ 1 (u32, seule valeur invalide = 0)
             if offset == 0 {
                 return Err(ParseError::TransferOffsetNotPositive {
-                    slug: slug.to_string(), collides: t.collides.join(", "), offset,
-                }.into());
+                    slug: slug.to_string(),
+                    collides: t.collides.join(", "),
+                    offset,
+                }
+                .into());
             }
             TransferTarget::Offset(offset)
-
         } else if let Some(ref d) = t.date {
             validate_date(slug, d.month, d.day)?;
-            TransferTarget::Date { month: d.month, day: d.day }
-
+            TransferTarget::Date {
+                month: d.month,
+                day: d.day,
+            }
         } else if let Some(ref m) = t.mobile {
             // V-T5 — ancre primitive uniquement
             if !PRIMITIVE_ANCHORS.contains(&m.anchor.as_str()) {
                 return Err(ParseError::TransferMobileInvalidAnchor {
-                    slug:    slug.to_string(),
+                    slug: slug.to_string(),
                     collides: t.collides.join(", "),
-                    anchor:  m.anchor.clone(),
-                }.into());
+                    anchor: m.anchor.clone(),
+                }
+                .into());
             }
             // Desugaring pentecostes → pascha + 49
             let (anchor, offset) = if m.anchor == "pentecostes" {
@@ -433,12 +481,14 @@ fn parse_transfers(slug: &str, from: u16, transfers: &[YamlTransfer])
                 (m.anchor.clone(), m.offset)
             };
             TransferTarget::Mobile { anchor, offset }
-
         } else {
             unreachable!()
         };
 
-        result.push(TransferDef { collides: t.collides.clone(), target });
+        result.push(TransferDef {
+            collides: t.collides.clone(),
+            target,
+        });
     }
 
     Ok(result)
@@ -449,13 +499,13 @@ fn parse_transfers(slug: &str, from: u16, transfers: &[YamlTransfer])
 // ---------------------------------------------------------------------------
 
 pub fn parse_feast_from_yaml(
-    slug:    &str,
-    scope:   Scope,
+    slug: &str,
+    scope: Scope,
     content: &str,
 ) -> Result<FeastDef, ForgeError> {
     // V1 — parsing YAML
-    let yaml: YamlFeast = serde_yml::from_str(content)
-        .map_err(|e| ParseError::MalformedYaml(e.to_string()))?;
+    let yaml: YamlFeast =
+        serde_yml::from_str(content).map_err(|e| ParseError::MalformedYaml(e.to_string()))?;
 
     if yaml.version != 1 {
         return Err(ParseError::UnsupportedSchemaVersion(yaml.version).into());
@@ -463,13 +513,19 @@ pub fn parse_feast_from_yaml(
 
     // Temporalité — exactement un bloc ou aucun (delta pur)
     let temporality = match (yaml.date.as_ref(), yaml.mobile.as_ref()) {
-        (Some(_), Some(_)) =>
-            return Err(ParseError::AmbiguousTemporalityField { slug: slug.to_string() }.into()),
-        (None, None) =>
-            None,  // delta pur — temporalité héritée de l'universale au merge
+        (Some(_), Some(_)) => {
+            return Err(ParseError::AmbiguousTemporalityField {
+                slug: slug.to_string(),
+            }
+            .into());
+        }
+        (None, None) => None, // delta pur — temporalité héritée de l'universale au merge
         (Some(d), None) => {
             validate_date(slug, d.month, d.day)?;
-            Some(Temporality::Fixed { month: d.month, day: d.day })
+            Some(Temporality::Fixed {
+                month: d.month,
+                day: d.day,
+            })
         }
         (None, Some(m)) => Some(parse_mobile_temporality(slug, m)?),
     };
@@ -482,8 +538,8 @@ pub fn parse_feast_from_yaml(
     Ok(FeastDef {
         slug: slug.to_string(),
         scope,
-        category:    yaml.category,
-        id:          yaml.id,
+        category: yaml.category,
+        id: yaml.id,
         temporality,
         class,
         history,
@@ -541,7 +597,10 @@ history:
 "#;
         let err = parse_feast_from_yaml("test_slug", Scope::Universal, yaml).unwrap_err();
         // MalformedYaml car le message vient de serde::de::Error::custom
-        assert!(matches!(err, ForgeError::Parse(ParseError::MalformedYaml(_))));
+        assert!(matches!(
+            err,
+            ForgeError::Parse(ParseError::MalformedYaml(_))
+        ));
     }
 
     /// Une valeur YAML 14 (hors plage 1–13) doit être rejetée par Serde.
@@ -560,7 +619,10 @@ history:
     color: albus
 "#;
         let err = parse_feast_from_yaml("test_slug", Scope::Universal, yaml).unwrap_err();
-        assert!(matches!(err, ForgeError::Parse(ParseError::MalformedYaml(_))));
+        assert!(matches!(
+            err,
+            ForgeError::Parse(ParseError::MalformedYaml(_))
+        ));
     }
 
     /// La valeur limite haute YAML 13 (→ 12 interne) doit être acceptée.
@@ -635,7 +697,10 @@ history:
     color: albus
 "#;
         let err = parse_feast_from_yaml("test_slug", Scope::Universal, yaml).unwrap_err();
-        assert!(matches!(err, ForgeError::Parse(ParseError::OffsetOnOrdinalAnchor { .. })));
+        assert!(matches!(
+            err,
+            ForgeError::Parse(ParseError::OffsetOnOrdinalAnchor { .. })
+        ));
     }
 
     #[test]
@@ -653,7 +718,10 @@ history:
     color: albus
 "#;
         let err = parse_feast_from_yaml("test_slug", Scope::Universal, yaml).unwrap_err();
-        assert!(matches!(err, ForgeError::Parse(ParseError::OrdinalOnNonOrdinalAnchor { .. })));
+        assert!(matches!(
+            err,
+            ForgeError::Parse(ParseError::OrdinalOnNonOrdinalAnchor { .. })
+        ));
     }
 
     // --- V-Natura-Memoria ---
@@ -756,7 +824,10 @@ history:
     has_vigil_mass: true
 "#;
         let err = parse_feast_from_yaml("test_slug", Scope::Universal, yaml).unwrap_err();
-        assert!(matches!(err, ForgeError::Parse(ParseError::VigiliaNonSollemnitas { .. })));
+        assert!(matches!(
+            err,
+            ForgeError::Parse(ParseError::VigiliaNonSollemnitas { .. })
+        ));
     }
 
     // --- Desugaring pentecostes (temporalité) ---
@@ -808,7 +879,10 @@ history:
           offset: 3
 "#;
         let err = parse_feast_from_yaml("test_slug", Scope::Universal, yaml).unwrap_err();
-        assert!(matches!(err, ForgeError::Parse(ParseError::TransferAmbiguous { .. })));
+        assert!(matches!(
+            err,
+            ForgeError::Parse(ParseError::TransferAmbiguous { .. })
+        ));
     }
 
     // --- V-T5 ---
@@ -914,7 +988,10 @@ history:
     color: albus
 "#;
         let err = parse_feast_from_yaml("test_slug", Scope::Universal, yaml).unwrap_err();
-        assert!(matches!(err, ForgeError::Parse(ParseError::UnsupportedSchemaVersion(2))));
+        assert!(matches!(
+            err,
+            ForgeError::Parse(ParseError::UnsupportedSchemaVersion(2))
+        ));
     }
 
     // --- parse_class — ADR-038 ---
@@ -987,7 +1064,10 @@ history:
     color: albus
 "#;
         let err = parse_feast_from_yaml("test_slug", Scope::Universal, yaml).unwrap_err();
-        assert!(matches!(err, ForgeError::Registry(RegistryError::UnknownClassString(_))));
+        assert!(matches!(
+            err,
+            ForgeError::Registry(RegistryError::UnknownClassString(_))
+        ));
     }
 
     // --- Iosephi — transfers scoped (schème v1.7.0) ---
@@ -1049,17 +1129,26 @@ history:
             "iosephi_sponsi_beatae_mariae_virginis",
             Scope::Universal,
             YAML_IOSEPHI,
-        ).expect("parse doit réussir");
+        )
+        .expect("parse doit réussir");
 
         assert_eq!(feast.history.len(), 2);
 
         let v1969 = &feast.history[0];
         assert_eq!(v1969.transfers.len(), 1, "1 TransferDef multi-collides");
-        assert_eq!(v1969.transfers[0].collides.len(), 8, "8 slugs Semaine Sainte (post-Octave)");
+        assert_eq!(
+            v1969.transfers[0].collides.len(),
+            8,
+            "8 slugs Semaine Sainte (post-Octave)"
+        );
 
         let v2008 = &feast.history[1];
         assert_eq!(v2008.transfers.len(), 1, "1 TransferDef multi-collides");
-        assert_eq!(v2008.transfers[0].collides.len(), 8, "8 slugs Semaine Sainte (pré-Octave)");
+        assert_eq!(
+            v2008.transfers[0].collides.len(),
+            8,
+            "8 slugs Semaine Sainte (pré-Octave)"
+        );
 
         for t in &v2008.transfers {
             match &t.target {

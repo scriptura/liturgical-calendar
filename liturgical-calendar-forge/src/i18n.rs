@@ -29,7 +29,7 @@ pub type FeastID = u16;
 /// `annotation = None` → `annotation_offset = 0xFFFF_FFFF` dans le `.lits`.
 #[derive(Debug, Clone)]
 pub struct ResolvedLabel {
-    pub label:      String,
+    pub label: String,
     pub annotation: Option<String>,
 }
 
@@ -49,15 +49,17 @@ pub struct DictStore {
 
 impl DictStore {
     pub fn new() -> Self {
-        Self { entries: BTreeMap::new() }
+        Self {
+            entries: BTreeMap::new(),
+        }
     }
 
     pub fn insert(
         &mut self,
-        lang:       &str,
-        slug:       &str,
-        from:       u16,
-        label:      String,
+        lang: &str,
+        slug: &str,
+        from: u16,
+        label: String,
         annotation: Option<String>,
     ) {
         self.entries.insert(
@@ -79,7 +81,9 @@ impl DictStore {
 }
 
 impl Default for DictStore {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -103,12 +107,12 @@ struct YamlI18nFeast {
 #[derive(Deserialize)]
 struct YamlI18nEntry {
     #[serde(default)]
-    from:       Option<u16>,
+    from: Option<u16>,
     /// Parsé pour lisibilité corpus — non utilisé dans DictStore.
     #[serde(default)]
     #[allow(dead_code)]
-    to:         Option<u16>,
-    label:      String,
+    to: Option<u16>,
+    label: String,
     annotation: Option<String>,
 }
 
@@ -117,18 +121,15 @@ struct YamlI18nEntry {
 // ---------------------------------------------------------------------------
 
 pub fn parse_dict_file(
-    path:  &Path,
-    lang:  &str,
-    slug:  &str,
+    path: &Path,
+    lang: &str,
+    slug: &str,
     store: &mut DictStore,
 ) -> Result<(), ForgeError> {
-    let content = fs::read_to_string(path)
-        .map_err(|e: io::Error| ForgeError::Io(e))?;
+    let content = fs::read_to_string(path).map_err(|e: io::Error| ForgeError::Io(e))?;
 
     let feast: YamlI18nFeast = serde_yml::from_str(&content)
-        .map_err(|e| ParseError::MalformedYaml(
-            format!("{}: {}", path.display(), e)
-        ))?;
+        .map_err(|e| ParseError::MalformedYaml(format!("{}: {}", path.display(), e)))?;
 
     if feast.version != 1 {
         return Err(ParseError::UnsupportedSchemaVersion(feast.version as u32).into());
@@ -157,9 +158,9 @@ pub fn parse_dict_file(
 // `rite_root` : chemin vers `corpus/{rite}/`.
 
 pub fn discover_and_load_i18n(
-    rite_root:  &Path,
+    rite_root: &Path,
     scope_path: Option<&str>,
-    store:      &mut DictStore,
+    store: &mut DictStore,
 ) -> Result<Vec<String>, ForgeError> {
     use std::collections::BTreeSet;
 
@@ -167,7 +168,9 @@ pub fn discover_and_load_i18n(
 
     // universale — toujours en premier (base)
     let universale = rite_root.join("universale");
-    if universale.exists() { scope_roots.push(universale); }
+    if universale.exists() {
+        scope_roots.push(universale);
+    }
 
     match scope_path {
         // scope cible = universale seul
@@ -176,14 +179,18 @@ pub fn discover_and_load_i18n(
         // scope cible spécifique non-universel
         Some(scope) => {
             let scope_dir = rite_root.join(scope);
-            if scope_dir.exists() { scope_roots.push(scope_dir); }
+            if scope_dir.exists() {
+                scope_roots.push(scope_dir);
+            }
         }
 
         // mode batch : tout le rite
         None => {
             for level in &["continentalia", "nationalia", "dioecesana", "ordines"] {
                 let dir = rite_root.join(level);
-                if !dir.exists() { continue; }
+                if !dir.exists() {
+                    continue;
+                }
                 let mut subs: Vec<_> = fs::read_dir(&dir)
                     .map_err(ForgeError::Io)?
                     .filter_map(|e| e.ok())
@@ -201,7 +208,9 @@ pub fn discover_and_load_i18n(
 
     for scope_root in &scope_roots {
         let i18n_root = scope_root.join("i18n");
-        if !i18n_root.exists() { continue; }
+        if !i18n_root.exists() {
+            continue;
+        }
         let langs = scan_i18n_root(&i18n_root, store)?;
         all_langs.extend(langs);
     }
@@ -211,10 +220,7 @@ pub fn discover_and_load_i18n(
 
 /// Scanne un répertoire `i18n/` unique : `{lang}/{slug}.yaml`.
 /// Retourne la liste des langues découvertes dans ce répertoire.
-fn scan_i18n_root(
-    i18n_root: &Path,
-    store:     &mut DictStore,
-) -> Result<Vec<String>, ForgeError> {
+fn scan_i18n_root(i18n_root: &Path, store: &mut DictStore) -> Result<Vec<String>, ForgeError> {
     let mut lang_dirs: Vec<_> = fs::read_dir(i18n_root)
         .map_err(ForgeError::Io)?
         .filter_map(|res| res.ok())
@@ -230,16 +236,20 @@ fn scan_i18n_root(
         let lang = lang_path
             .file_name()
             .and_then(|n| n.to_str())
-            .ok_or_else(|| ParseError::MalformedYaml(
-                format!("répertoire lang invalide : {}", lang_path.display())
-            ))?
+            .ok_or_else(|| {
+                ParseError::MalformedYaml(format!(
+                    "répertoire lang invalide : {}",
+                    lang_path.display()
+                ))
+            })?
             .to_owned();
 
         let mut yaml_files: Vec<_> = fs::read_dir(&lang_path)
             .map_err(ForgeError::Io)?
             .filter_map(|res| res.ok())
             .filter(|entry| {
-                entry.path()
+                entry
+                    .path()
                     .extension()
                     .map(|ext| ext == "yaml")
                     .unwrap_or(false)
@@ -253,9 +263,12 @@ fn scan_i18n_root(
             let slug = yaml_path
                 .file_stem()
                 .and_then(|s| s.to_str())
-                .ok_or_else(|| ParseError::MalformedYaml(
-                    format!("stem de fichier invalide : {}", yaml_path.display())
-                ))?
+                .ok_or_else(|| {
+                    ParseError::MalformedYaml(format!(
+                        "stem de fichier invalide : {}",
+                        yaml_path.display()
+                    ))
+                })?
                 .to_owned();
 
             parse_dict_file(&yaml_path, &lang, &slug, store)?;
@@ -273,10 +286,7 @@ fn scan_i18n_root(
 
 /// Remappage post-ingestion : corrige les clés `from=1969` produites par défaut
 /// quand le slug démarre après 1969 et n'a qu'une seule entrée history.
-pub fn remap_default_from_keys(
-    store:    &mut DictStore,
-    registry: &FeastRegistry,
-) {
+pub fn remap_default_from_keys(store: &mut DictStore, registry: &FeastRegistry) {
     let to_remap: Vec<(String, String)> = store
         .iter_keys()
         .filter(|(_, _slug, from)| *from == 1969)
@@ -307,10 +317,7 @@ pub fn remap_default_from_keys(
 ///
 /// Permet au rédacteur de n'écrire le label qu'une fois quand il ne change pas
 /// entre deux tranches history (ex: seule la precedence évolue).
-pub fn propagate_labels(
-    store:    &mut DictStore,
-    registry: &FeastRegistry,
-) {
+pub fn propagate_labels(store: &mut DictStore, registry: &FeastRegistry) {
     for feast in registry.iter() {
         // Trier les tranches par from ASC — ordre canonique.
         let mut froms: Vec<u16> = feast.history.iter().map(|e| e.from).collect();
@@ -326,13 +333,13 @@ pub fn propagate_labels(
             .collect();
 
         for lang in &langs {
-            let mut last_label:      Option<String> = None;
+            let mut last_label: Option<String> = None;
             let mut last_annotation: Option<String> = None;
 
             for &from in &froms {
                 match store.get(lang, &feast.slug, from) {
                     Some(resolved) => {
-                        last_label      = Some(resolved.label.clone());
+                        last_label = Some(resolved.label.clone());
                         last_annotation = resolved.annotation.clone();
                     }
                     None => {
@@ -384,47 +391,48 @@ fn validate_label(label: &str) -> Option<&'static str> {
 // validate_i18n — V-I1, V-I2, V-I3
 // ---------------------------------------------------------------------------
 
-pub fn validate_i18n(
-    registry: &FeastRegistry,
-    store:    &DictStore,
-) -> Result<(), ForgeError> {
+pub fn validate_i18n(registry: &FeastRegistry, store: &DictStore) -> Result<(), ForgeError> {
     // V-I1 — chaque (slug, from) du registry doit avoir un label latin.
     for feast in registry.iter() {
         for entry in &feast.history {
             if store.get("la", &feast.slug, entry.from).is_none() {
                 return Err(ParseError::I18nMissingLatinKey {
-                    slug:  feast.slug.clone(),
-                    from:  entry.from,
+                    slug: feast.slug.clone(),
+                    from: entry.from,
                     field: "label".to_owned(),
-                }.into());
+                }
+                .into());
             }
         }
     }
 
     // V-I2 — chaque (lang, slug, from) du store doit correspondre à un (slug, from) du registry.
     for (lang, slug, from) in store.iter_keys() {
-        let feast = registry.get(slug)
+        let feast = registry
+            .get(slug)
             .ok_or_else(|| ParseError::I18nOrphanKey {
-                slug:  slug.to_owned(),
-                lang:  lang.to_owned(),
+                slug: slug.to_owned(),
+                lang: lang.to_owned(),
                 from,
                 field: "label".to_owned(),
             })?;
 
         if !feast.history.iter().any(|e| e.from == from) {
             return Err(ParseError::I18nOrphanKey {
-                slug:  slug.to_owned(),
-                lang:  lang.to_owned(),
+                slug: slug.to_owned(),
+                lang: lang.to_owned(),
                 from,
                 field: "label".to_owned(),
-            }.into());
+            }
+            .into());
         }
     }
 
     // V-I3 — chaque label présent dans le store doit être non-vide, ≥ 3 caractères,
     // sans whitespace superflu ni caractère de contrôle.
     for (lang, slug, from) in store.iter_keys() {
-        let resolved = store.get(lang, slug, from)
+        let resolved = store
+            .get(lang, slug, from)
             .expect("iter_keys() et get() cohérents");
         if let Some(reason) = validate_label(&resolved.label) {
             return Err(ParseError::I18nInvalidLabel {
@@ -432,7 +440,8 @@ pub fn validate_i18n(
                 lang: lang.to_owned(),
                 from,
                 reason,
-            }.into());
+            }
+            .into());
         }
     }
 
@@ -447,12 +456,13 @@ pub fn validate_i18n(
 /// Si `lang` n'a pas d'entrée, retourne le label latin.
 /// V-I1 garantit que le `expect` est irréachable post-validation.
 pub fn resolve_label<'a>(
-    slug:  &str,
-    from:  u16,
-    lang:  &str,
+    slug: &str,
+    from: u16,
+    lang: &str,
     dicts: &'a DictStore,
 ) -> &'a ResolvedLabel {
-    dicts.get(lang, slug, from)
+    dicts
+        .get(lang, slug, from)
         .or_else(|| dicts.get("la", slug, from))
         .expect("V-I1 garantit l'existence du label latin pour tout (slug, from)")
 }
@@ -470,15 +480,17 @@ pub fn resolve_label<'a>(
 pub type LabelTable = BTreeMap<(FeastID, u16, u16, String), ResolvedLabel>;
 
 pub fn build_label_table(
-    registry:  &FeastRegistry,
-    store:     &DictStore,
+    registry: &FeastRegistry,
+    store: &DictStore,
     feast_ids: &BTreeMap<String, FeastID>,
-    langs:     &[&str],
+    langs: &[&str],
 ) -> LabelTable {
     let mut table = LabelTable::new();
 
     for feast in registry.iter() {
-        let Some(&feast_id) = feast_ids.get(&feast.slug) else { continue };
+        let Some(&feast_id) = feast_ids.get(&feast.slug) else {
+            continue;
+        };
 
         for entry in &feast.history {
             for &lang in langs {

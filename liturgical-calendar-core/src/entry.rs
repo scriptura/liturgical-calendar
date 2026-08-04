@@ -33,7 +33,10 @@ const _: () = assert!(offset_of!(FeastEntry, flags) == 2);
 impl FeastEntry {
     /// Retourne une entrée entièrement nulle.
     pub const fn zeroed() -> Self {
-        Self { feast_id: 0, flags: 0 }
+        Self {
+            feast_id: 0,
+            flags: 0,
+        }
     }
 
     /// Extrait la `Precedence` depuis `flags[3:0]`.
@@ -62,7 +65,9 @@ impl FeastEntry {
 }
 
 impl Default for FeastEntry {
-    fn default() -> Self { Self::zeroed() }
+    fn default() -> Self {
+        Self::zeroed()
+    }
 }
 
 // ── TimelineEntry ─────────────────────────────────────────────────────────────
@@ -93,26 +98,26 @@ impl Default for FeastEntry {
 #[repr(C)]
 pub struct TimelineEntry {
     /// 0 = Padding Entry. Sinon : registry_index (1-based).
-    pub primary_index:    u16,
+    pub primary_index: u16,
     /// Offset dans le Secondary Pool (en nombre de u16).
     pub secondary_offset: u16,
     /// Bits [1:0] = vesperae_i/vigilia. Bits [4:2] = LiturgicalPeriod.
     pub occurrence_flags: u8,
     /// Nombre de célébrations secondaires dans le Secondary Pool.
-    pub secondary_count:  u8,
+    pub secondary_count: u8,
     /// Ordinal de semaine liturgique (0 = N/A, 1–34 = semaine active).
-    pub liturgical_week:  u8,
+    pub liturgical_week: u8,
     /// Padding structurel — doit être nul.
-    pub _reserved:        u8,
+    pub _reserved: u8,
 }
 
 // Assertions statiques de layout.
 const _: () = assert!(size_of::<TimelineEntry>() == 8);
 const _: () = assert!(offset_of!(TimelineEntry, secondary_offset) == 2);
 const _: () = assert!(offset_of!(TimelineEntry, occurrence_flags) == 4);
-const _: () = assert!(offset_of!(TimelineEntry, secondary_count)  == 5);
-const _: () = assert!(offset_of!(TimelineEntry, liturgical_week)  == 6);
-const _: () = assert!(offset_of!(TimelineEntry, _reserved)        == 7);
+const _: () = assert!(offset_of!(TimelineEntry, secondary_count) == 5);
+const _: () = assert!(offset_of!(TimelineEntry, liturgical_week) == 6);
+const _: () = assert!(offset_of!(TimelineEntry, _reserved) == 7);
 
 /// Discriminant de layout v6 — invalide automatiquement tous les artefacts v5.
 ///
@@ -124,33 +129,32 @@ const _: () = assert!(offset_of!(TimelineEntry, _reserved)        == 7);
 /// Bits [15:8]  = offset `secondary_offset` (2).
 /// Bits [7:0]   = `size_of::<TimelineEntry>` (8).
 pub const LAYOUT_DISCRIMINANT: u64 = {
-    let sz             = size_of::<TimelineEntry>() as u64;
+    let sz = size_of::<TimelineEntry>() as u64;
     let off_sec_offset = offset_of!(TimelineEntry, secondary_offset) as u64;
-    let off_occ_flags  = offset_of!(TimelineEntry, occurrence_flags) as u64;
-    let off_sec_count  = offset_of!(TimelineEntry, secondary_count)  as u64;
-    let off_lit_week   = offset_of!(TimelineEntry, liturgical_week)  as u64;
-    let off_reserved   = offset_of!(TimelineEntry, _reserved)        as u64;
-    let version        = KALD_FORMAT_VERSION as u64;
+    let off_occ_flags = offset_of!(TimelineEntry, occurrence_flags) as u64;
+    let off_sec_count = offset_of!(TimelineEntry, secondary_count) as u64;
+    let off_lit_week = offset_of!(TimelineEntry, liturgical_week) as u64;
+    let off_reserved = offset_of!(TimelineEntry, _reserved) as u64;
+    let version = KALD_FORMAT_VERSION as u64;
 
-    sz
-        ^ (off_sec_offset << 8)
-        ^ (off_occ_flags  << 16)
-        ^ (off_sec_count  << 24)
-        ^ (off_lit_week   << 32)
-        ^ (off_reserved   << 40)
-        ^ (version        << 48)
+    sz ^ (off_sec_offset << 8)
+        ^ (off_occ_flags << 16)
+        ^ (off_sec_count << 24)
+        ^ (off_lit_week << 32)
+        ^ (off_reserved << 40)
+        ^ (version << 48)
 };
 
 impl TimelineEntry {
     /// Retourne une entrée entièrement nulle (Padding Entry).
     pub const fn zeroed() -> Self {
         Self {
-            primary_index:    0,
+            primary_index: 0,
             secondary_offset: 0,
             occurrence_flags: 0,
-            secondary_count:  0,
-            liturgical_week:  0,
-            _reserved:        0,
+            secondary_count: 0,
+            liturgical_week: 0,
+            _reserved: 0,
         }
     }
 
@@ -183,7 +187,9 @@ impl TimelineEntry {
 }
 
 impl Default for TimelineEntry {
-    fn default() -> Self { Self::zeroed() }
+    fn default() -> Self {
+        Self::zeroed()
+    }
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -205,9 +211,9 @@ mod tests {
     #[test]
     fn layout_timeline_offsets() {
         assert_eq!(offset_of!(TimelineEntry, occurrence_flags), 4);
-        assert_eq!(offset_of!(TimelineEntry, secondary_count),  5);
-        assert_eq!(offset_of!(TimelineEntry, liturgical_week),  6);
-        assert_eq!(offset_of!(TimelineEntry, _reserved),        7);
+        assert_eq!(offset_of!(TimelineEntry, secondary_count), 5);
+        assert_eq!(offset_of!(TimelineEntry, liturgical_week), 6);
+        assert_eq!(offset_of!(TimelineEntry, _reserved), 7);
     }
 
     #[test]
@@ -216,7 +222,10 @@ mod tests {
         assert!(e.is_padding());
         assert!(!e.has_vesperae_i());
         assert!(!e.has_vigilia());
-        assert_eq!(e.liturgical_period(), Ok(LiturgicalPeriod::TempusOrdinarium));
+        assert_eq!(
+            e.liturgical_period(),
+            Ok(LiturgicalPeriod::TempusOrdinarium)
+        );
         assert_eq!(e.liturgical_week, 0);
     }
 
@@ -229,20 +238,30 @@ mod tests {
     fn liturgical_period_roundtrip() {
         use crate::types::LiturgicalPeriod::*;
         let periods = [
-            TempusOrdinarium, TempusAdventus, TempusNativitatis,
-            TempusQuadragesimae, TriduumPaschale, TempusPaschale, DiesSancti,
+            TempusOrdinarium,
+            TempusAdventus,
+            TempusNativitatis,
+            TempusQuadragesimae,
+            TriduumPaschale,
+            TempusPaschale,
+            DiesSancti,
         ];
         for p in periods {
             let bits = (p as u8 & 0x07) << 2;
             let e = TimelineEntry {
-                primary_index:    1,
+                primary_index: 1,
                 secondary_offset: 0,
                 occurrence_flags: bits,
-                secondary_count:  0,
-                liturgical_week:  1,
-                _reserved:        0,
+                secondary_count: 0,
+                liturgical_week: 1,
+                _reserved: 0,
             };
-            assert_eq!(e.liturgical_period(), Ok(p), "période {:?} non roundtrip", p);
+            assert_eq!(
+                e.liturgical_period(),
+                Ok(p),
+                "période {:?} non roundtrip",
+                p
+            );
         }
     }
 
@@ -254,7 +273,7 @@ mod tests {
         let combined = period_bits | vespers_bits;
 
         let e = TimelineEntry {
-            primary_index:    1,
+            primary_index: 1,
             occurrence_flags: combined,
             ..TimelineEntry::zeroed()
         };
@@ -265,18 +284,21 @@ mod tests {
 
     #[test]
     fn feast_entry_flags_roundtrip() {
-        let p     = Precedence::MemoriaeAdLibitum as u16;  // 11
-        let c     = Color::Viridis as u16;                 // 2
-        let n     = Nature::Memoria as u16;                // 3
+        let p = Precedence::MemoriaeAdLibitum as u16; // 11
+        let c = Color::Viridis as u16; // 2
+        let n = Nature::Memoria as u16; // 3
         let vigil: u16 = 1 << 14;
 
         // v6 : bits [10:8] nuls (LiturgicalPeriod supprimé de FeastEntry)
         let flags = p | (c << 4) | (n << 11) | vigil;
-        let fe = FeastEntry { feast_id: 42, flags };
+        let fe = FeastEntry {
+            feast_id: 42,
+            flags,
+        };
 
         assert_eq!(fe.precedence(), Ok(Precedence::MemoriaeAdLibitum));
-        assert_eq!(fe.color(),      Ok(Color::Viridis));
-        assert_eq!(fe.nature(),     Ok(Nature::Memoria));
+        assert_eq!(fe.color(), Ok(Color::Viridis));
+        assert_eq!(fe.nature(), Ok(Nature::Memoria));
         assert!(fe.has_vigil_mass());
         // bits [10:8] doivent rester nuls en v6
         assert_eq!(fe.flags & 0x0700, 0);
@@ -293,12 +315,11 @@ mod tests {
     fn layout_discriminant_differs_from_v5() {
         // Valeur v5 reconstruite manuellement pour vérification de rupture.
         // sz=8, off_sec_offset=2, off_occ_flags=4, off_sec_count=5, off_reserved=6, version=5
-        let v5: u64 = 8u64
-            ^ (2u64 << 8)
-            ^ (4u64 << 16)
-            ^ (5u64 << 24)
-            ^ (6u64 << 32)
-            ^ (5u64 << 48);
-        assert_ne!(LAYOUT_DISCRIMINANT, v5, "v6 doit invalider les artefacts v5");
+        let v5: u64 =
+            8u64 ^ (2u64 << 8) ^ (4u64 << 16) ^ (5u64 << 24) ^ (6u64 << 32) ^ (5u64 << 48);
+        assert_ne!(
+            LAYOUT_DISCRIMINANT, v5,
+            "v6 doit invalider les artefacts v5"
+        );
     }
 }

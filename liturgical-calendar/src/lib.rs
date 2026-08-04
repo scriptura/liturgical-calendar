@@ -70,16 +70,8 @@
 // ── Ré-exportations ───────────────────────────────────────────────────────────
 
 pub use liturgical_calendar_core::{
-    // Structures principales
-    TimelineEntry,
     FeastEntry,
     Header,
-
-    // FFI — lecture
-    kal_read_entry,
-    kal_read_feast,
-    kal_read_secondary,
-    kal_validate_header,
 
     // FFI — codes de retour
     KAL_ENGINE_OK,
@@ -94,9 +86,16 @@ pub use liturgical_calendar_core::{
     KAL_ERR_SCHEMA,
     KAL_ERR_VERSION,
 
-    // Types de domaine
-    types::{Color, DomainError, LiturgicalPeriod, Nature, Precedence},
+    // Structures principales
+    TimelineEntry,
+    // FFI — lecture
+    kal_read_entry,
+    kal_read_feast,
+    kal_read_secondary,
+    kal_validate_header,
 
     // Provider i18n
     lits_provider,
+    // Types de domaine
+    types::{Color, DomainError, LiturgicalPeriod, Nature, Precedence},
 };

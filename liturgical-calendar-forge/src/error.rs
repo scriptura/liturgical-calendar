@@ -27,9 +27,17 @@ pub enum ParseError {
     /// V4a — anchor≠tempus_ordinarium + ordinal présent
     OrdinalOnNonOrdinalAnchor { slug: String, anchor: String },
     /// V-Natura-Memoria — nature=memoria + precedence ∉ {11,12}
-    InvalidMemoriaPrecedence { slug: String, from: u16, found_precedence: u8 },
+    InvalidMemoriaPrecedence {
+        slug: String,
+        from: u16,
+        found_precedence: u8,
+    },
     /// V-Vigilia — has_vigil_mass=true + nature≠sollemnitas
-    VigiliaNonSollemnitas { slug: String, from: u16, nature: String },
+    VigiliaNonSollemnitas {
+        slug: String,
+        from: u16,
+        nature: String,
+    },
     /// V3a — date invalide (mois/jour incohérent)
     InvalidDate { slug: String, month: u8, day: u8 },
     /// V-T1 — plus d'un champ parmi offset/date/mobile dans un transfer
@@ -39,18 +47,44 @@ pub enum ParseError {
     /// V-T2 — collides référence un slug absent du registry
     UnknownCollidesTarget { slug: String, collides: String },
     /// V-T3 — collides dupliqué dans la liste transfers d'une entrée history
-    TransferDuplicateCollides { slug: String, from: u16, collides: String },
+    TransferDuplicateCollides {
+        slug: String,
+        from: u16,
+        collides: String,
+    },
     /// V-T4 — offset direct == 0 (u32, valeur invalide)
-    TransferOffsetNotPositive { slug: String, collides: String, offset: u32 },
+    TransferOffsetNotPositive {
+        slug: String,
+        collides: String,
+        offset: u32,
+    },
     /// V-T5 — anchor mobile de transfer n'est pas une ancre primitive
-    TransferMobileInvalidAnchor { slug: String, collides: String, anchor: String },
+    TransferMobileInvalidAnchor {
+        slug: String,
+        collides: String,
+        anchor: String,
+    },
     /// V-I1 — i18n/la/{slug}.yaml absent ou clé {from}.{field} manquante.
     /// Fatale : chaque entrée history[] doit avoir un titre latin.
-    I18nMissingLatinKey { slug: String, from: u16, field: String },
+    I18nMissingLatinKey {
+        slug: String,
+        from: u16,
+        field: String,
+    },
     /// V-I2 — Clé orpheline dans un dictionnaire i18n.
-    I18nOrphanKey { slug: String, lang: String, from: u16, field: String },
+    I18nOrphanKey {
+        slug: String,
+        lang: String,
+        from: u16,
+        field: String,
+    },
     /// V-I3 — Label i18n présent mais invalide.
-    I18nInvalidLabel { slug: String, lang: String, from: u16, reason: &'static str },
+    I18nInvalidLabel {
+        slug: String,
+        lang: String,
+        from: u16,
+        reason: &'static str,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -85,41 +119,57 @@ pub enum ForgeError {
     Parse(ParseError),
     Registry(RegistryError),
     /// Ancre non résolue lors du calcul de PreResolvedTransfers.
-    UnresolvedAnchor { anchor: String },
+    UnresolvedAnchor {
+        anchor: String,
+    },
     Io(std::io::Error),
 
     // ── Variants Session B ─────────────────────────────────────────────────
     /// V7 — Deux Solennités irréconciliables sur le même slot DOY.
     SolemnityCollision {
-        slug_a:     String,
-        slug_b:     String,
+        slug_a: String,
+        slug_b: String,
         precedence: u8,
-        doy:        u16,
-        year:       u16,
+        doy: u16,
+        year: u16,
     },
     /// V8 — Fête transférable sans slot libre dans [doy+1, doy+7].
     TransferFailed {
-        slug:       String,
+        slug: String,
         origin_doy: u16,
         blocked_at: u16,
-        year:       u16,
+        year: u16,
     },
     /// V9 — FeastID muté entre élection et packing (corruption pipeline).
     FeastIDMutated {
-        slug:        String,
+        slug: String,
         expected_id: u16,
-        found_id:    u16,
-        doy:         u16,
-        year:        u16,
+        found_id: u16,
+        doy: u16,
+        year: u16,
     },
     /// V10 — Padding Entry absente à doy=59 pour année non-bissextile.
-    PaddingEntryMissing { year: u16, doy: u16 },
+    PaddingEntryMissing {
+        year: u16,
+        doy: u16,
+    },
     /// V11 — Secondary Pool dépasse u16::MAX entrées (déduplication insuffisante).
-    SecondaryPoolOverflow { pool_len: u32, max_capacity: u32 },
+    SecondaryPoolOverflow {
+        pool_len: u32,
+        max_capacity: u32,
+    },
     /// V12 — secondary_count dépasse u8::MAX pour un slot DOY.
-    SecondaryCountOverflow { doy: u16, year: u16, count: usize },
+    SecondaryCountOverflow {
+        doy: u16,
+        year: u16,
+        count: usize,
+    },
     /// Passe 5 — Table finale incohérente après clôture transitive.
-    ResolutionIncomplete { doy: u16, year: u16, detail: String },
+    ResolutionIncomplete {
+        doy: u16,
+        year: u16,
+        detail: String,
+    },
 
     // ── Variants Session C (v5) ────────────────────────────────────────────
     /// Feast Registry saturé — plus de 65 535 fêtes distinctes dans le corpus.
@@ -127,23 +177,34 @@ pub enum ForgeError {
     /// `feast_id` présent dans une année résolue mais absent du Feast Registry.
     /// Indique un bug dans la Pass 1 (`build_feast_registry`) : invariant normalement
     /// inviolable en production.
-    FeastNotInRegistry { feast_id: u16, year: u16, doy: u16 },
+    FeastNotInRegistry {
+        feast_id: u16,
+        year: u16,
+        doy: u16,
+    },
 
     // ── Variants artefacts ─────────────────────────────────────────────────
     /// Le `.lits` existant a été produit depuis un `.kald` différent.
     ArtifactBuildIdMismatch {
-        lits_path:     std::path::PathBuf,
+        lits_path: std::path::PathBuf,
         lits_build_id: [u8; 8],
         kald_build_id: [u8; 8],
     },
     /// Le `.kald` sur disque n'a pas pu être relu pour vérification du build ID.
     ArtifactVerificationFailed {
         kald_path: std::path::PathBuf,
-        reason:    String,
+        reason: String,
     },
-    FeastIDLockConflict { slug: String, yaml_id: u16, lock_id: u16 },
+    FeastIDLockConflict {
+        slug: String,
+        yaml_id: u16,
+        lock_id: u16,
+    },
     /// Plus d'IDs disponibles pour ce couple (scope, category).
-    FeastIDExhausted { scope: u8, category: u8 },
+    FeastIDExhausted {
+        scope: u8,
+        category: u8,
+    },
     /// Plus de variant_id disponibles (> 65 535 scopes — cas théorique).
     VariantIDExhausted,
     /// Fichier .lock illisible ou corrompu.
@@ -151,22 +212,30 @@ pub enum ForgeError {
     /// Post-merge : champ obligatoire absent après fusion universale + override.
     MissingResolvedField {
         feast_id: u16,
-        year:     u16,
-        doy:      u16,
-        field:    &'static str,
+        year: u16,
+        doy: u16,
+        field: &'static str,
     },
     /// Validation post-écriture `kal_validate_header` échouée.
-    KaldValidationFailed { code: i32 },
+    KaldValidationFailed {
+        code: i32,
+    },
 }
 
 impl From<ParseError> for ForgeError {
-    fn from(e: ParseError) -> Self { ForgeError::Parse(e) }
+    fn from(e: ParseError) -> Self {
+        ForgeError::Parse(e)
+    }
 }
 impl From<RegistryError> for ForgeError {
-    fn from(e: RegistryError) -> Self { ForgeError::Registry(e) }
+    fn from(e: RegistryError) -> Self {
+        ForgeError::Registry(e)
+    }
 }
 impl From<std::io::Error> for ForgeError {
-    fn from(e: std::io::Error) -> Self { ForgeError::Io(e) }
+    fn from(e: std::io::Error) -> Self {
+        ForgeError::Io(e)
+    }
 }
 
 impl fmt::Display for ForgeError {

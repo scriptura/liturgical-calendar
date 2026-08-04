@@ -14,10 +14,10 @@ pub enum DomainError {
 pub enum Precedence {
     /// 1. Triduum pascal.
     TriduumSacrum = 0,
-    /// 2. Solennités majeures : Nativité, Épiphanie, Ascension, Pentecôte. 
+    /// 2. Solennités majeures : Nativité, Épiphanie, Ascension, Pentecôte.
     ///    Inclut les dimanches d'Avent, Carême, Temps Pascal, Mercredi des Cendres et Semaine Sainte.
     SollemnitatesMaiores = 1,
-    /// 3. Solennités du Seigneur, de la Vierge et des saints inscrits au calendrier général. 
+    /// 3. Solennités du Seigneur, de la Vierge et des saints inscrits au calendrier général.
     ///    Inclut la Commémoration des fidèles défunts.
     SollemnitatesGenerales = 2,
     /// 4. Solennités propres (patron du lieu, dédicace de l'église, titulaire de l'ordre).
@@ -47,20 +47,20 @@ impl Precedence {
     /// Convertit un `u8` en `Precedence`. Variants 13–15 → `Err`.
     pub fn try_from_u8(val: u8) -> Result<Self, DomainError> {
         match val {
-            0  => Ok(Self::TriduumSacrum),
-            1  => Ok(Self::SollemnitatesMaiores),
-            2  => Ok(Self::SollemnitatesGenerales),
-            3  => Ok(Self::SollemnitatesPropria),
-            4  => Ok(Self::FestaDomini),
-            5  => Ok(Self::DominicaePerAnnum),
-            6  => Ok(Self::FestaBMVEtSanctorumGenerales),
-            7  => Ok(Self::FestaPropria),
-            8  => Ok(Self::FeriaePrivilegiatae),
-            9  => Ok(Self::MemoriaeObligatoriaGenerales),
+            0 => Ok(Self::TriduumSacrum),
+            1 => Ok(Self::SollemnitatesMaiores),
+            2 => Ok(Self::SollemnitatesGenerales),
+            3 => Ok(Self::SollemnitatesPropria),
+            4 => Ok(Self::FestaDomini),
+            5 => Ok(Self::DominicaePerAnnum),
+            6 => Ok(Self::FestaBMVEtSanctorumGenerales),
+            7 => Ok(Self::FestaPropria),
+            8 => Ok(Self::FeriaePrivilegiatae),
+            9 => Ok(Self::MemoriaeObligatoriaGenerales),
             10 => Ok(Self::MemoriaeObligatoriaePropria),
             11 => Ok(Self::MemoriaeAdLibitum),
             12 => Ok(Self::FeriaePerAnnum),
-            v  => Err(DomainError::InvalidDiscriminant(v)),
+            v => Err(DomainError::InvalidDiscriminant(v)),
         }
     }
 }
@@ -183,7 +183,7 @@ impl LiturgicalPeriod {
 #[cfg(test)]
 mod tests {
     use super::*;
- 
+
     #[test]
     fn precedence_roundtrip() {
         let variants = [
@@ -205,23 +205,35 @@ mod tests {
             assert_eq!(Precedence::try_from_u8(v as u8), Ok(v));
         }
     }
- 
+
     #[test]
     fn precedence_yaml_to_internal_spot_checks() {
         assert_eq!(Precedence::try_from_u8(0), Ok(Precedence::TriduumSacrum));
-        assert_eq!(Precedence::try_from_u8(9), Ok(Precedence::MemoriaeObligatoriaGenerales));
-        assert_eq!(Precedence::try_from_u8(10), Ok(Precedence::MemoriaeObligatoriaePropria));
-        assert_eq!(Precedence::try_from_u8(11), Ok(Precedence::MemoriaeAdLibitum));
+        assert_eq!(
+            Precedence::try_from_u8(9),
+            Ok(Precedence::MemoriaeObligatoriaGenerales)
+        );
+        assert_eq!(
+            Precedence::try_from_u8(10),
+            Ok(Precedence::MemoriaeObligatoriaePropria)
+        );
+        assert_eq!(
+            Precedence::try_from_u8(11),
+            Ok(Precedence::MemoriaeAdLibitum)
+        );
         assert_eq!(Precedence::try_from_u8(12), Ok(Precedence::FeriaePerAnnum));
     }
- 
+
     #[test]
     fn precedence_reserved() {
         for v in [13u8, 14, 15] {
-            assert_eq!(Precedence::try_from_u8(v), Err(DomainError::InvalidDiscriminant(v)));
+            assert_eq!(
+                Precedence::try_from_u8(v),
+                Err(DomainError::InvalidDiscriminant(v))
+            );
         }
     }
- 
+
     #[test]
     fn precedence_ordering() {
         assert!(Precedence::TriduumSacrum < Precedence::SollemnitatesMaiores);
@@ -229,27 +241,43 @@ mod tests {
         assert!(Precedence::MemoriaeObligatoriaePropria < Precedence::MemoriaeAdLibitum);
         assert!(Precedence::MemoriaeAdLibitum < Precedence::FeriaePerAnnum);
     }
- 
+
     #[test]
     fn nature_roundtrip() {
-        for v in [Nature::Sollemnitas, Nature::Festum, Nature::Memoria, Nature::Feria, Nature::Commemoratio] {
+        for v in [
+            Nature::Sollemnitas,
+            Nature::Festum,
+            Nature::Memoria,
+            Nature::Feria,
+            Nature::Commemoratio,
+        ] {
             assert_eq!(Nature::try_from_u8(v as u8), Ok(v));
         }
     }
- 
+
     #[test]
     fn color_roundtrip() {
-        for v in [Color::Albus, Color::Rubeus, Color::Viridis, Color::Violaceus, Color::Rosaceus, Color::Niger] {
+        for v in [
+            Color::Albus,
+            Color::Rubeus,
+            Color::Viridis,
+            Color::Violaceus,
+            Color::Rosaceus,
+            Color::Niger,
+        ] {
             assert_eq!(Color::try_from_u8(v as u8), Ok(v));
         }
     }
- 
+
     #[test]
     fn liturgical_period_roundtrip() {
         for v in [
-            LiturgicalPeriod::TempusOrdinarium, LiturgicalPeriod::TempusAdventus,
-            LiturgicalPeriod::TempusNativitatis, LiturgicalPeriod::TempusQuadragesimae,
-            LiturgicalPeriod::TriduumPaschale, LiturgicalPeriod::TempusPaschale,
+            LiturgicalPeriod::TempusOrdinarium,
+            LiturgicalPeriod::TempusAdventus,
+            LiturgicalPeriod::TempusNativitatis,
+            LiturgicalPeriod::TempusQuadragesimae,
+            LiturgicalPeriod::TriduumPaschale,
+            LiturgicalPeriod::TempusPaschale,
             LiturgicalPeriod::DiesSancti,
         ] {
             assert_eq!(LiturgicalPeriod::try_from_u8(v as u8), Ok(v));

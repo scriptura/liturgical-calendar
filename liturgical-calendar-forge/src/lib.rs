@@ -1,52 +1,49 @@
 #![allow(missing_docs)] // activé en Jalon 3
 
-pub mod error;
-pub mod registry;
-pub mod lock;
-pub mod variant_lock;
-pub mod parsing;
-pub mod ingestion;
-pub mod id_alloc;
 pub mod canonicalization;
-pub mod resolution;
+pub mod error;
+pub mod i18n;
+pub mod id_alloc;
+pub mod ingestion;
+pub(crate) mod lits_writer;
+pub mod lock;
 pub mod materialization;
 pub mod packing;
-pub mod i18n;
-pub(crate) mod lits_writer;
+pub mod parsing;
+pub mod registry;
+pub mod resolution;
+pub mod variant_lock;
 
 // ── Exports publics ───────────────────────────────────────────────────────────
 
-pub use variant_lock::VariantRegistryLock;
-pub use error::ForgeError;
-pub use registry::FeastRegistry;
-pub use parsing::parse_feast_from_yaml;
-pub use ingestion::ingest_corpus;
-pub use id_alloc::allocate_feast_ids;
-pub(crate) use packing::build_kald;
 pub use canonicalization::{
-    CanonicalizedYear, PreResolvedTransfers, AnchorTable,
-    canonicalize_year, compute_easter, build_anchor_table,
-    resolve_adventus, resolve_nativitas, resolve_epiphania,
-    resolve_tempus_ordinarium, MONTH_STARTS, is_leap_year,
+    AnchorTable, CanonicalizedYear, MONTH_STARTS, PreResolvedTransfers, build_anchor_table,
+    canonicalize_year, compute_easter, is_leap_year, resolve_adventus, resolve_epiphania,
+    resolve_nativitas, resolve_tempus_ordinarium,
 };
+pub use error::ForgeError;
+pub use id_alloc::allocate_feast_ids;
+pub use ingestion::ingest_corpus;
+pub(crate) use packing::build_kald;
+pub use parsing::parse_feast_from_yaml;
+pub use registry::FeastRegistry;
+pub use variant_lock::VariantRegistryLock;
 
 // ── Imports internes ──────────────────────────────────────────────────────────
 
-use std::path::Path;
 use liturgical_calendar_core::entry::TimelineEntry;
-use materialization::{
-    build_feast_registry, generate_year, vespers_lookahead_pass, PoolBuilder,
-};
+use materialization::{PoolBuilder, build_feast_registry, generate_year, vespers_lookahead_pass};
 use packing::write_kald;
 use resolution::resolve_year;
+use std::path::Path;
 
 // ── Types publics ─────────────────────────────────────────────────────────────
 
 /// Paramètres i18n pour la production des fichiers `.lits` compagnons.
 pub struct I18nConfig<'a> {
-    pub i18n_root:  &'a Path,
+    pub i18n_root: &'a Path,
     pub scope_path: Option<&'a str>,
-    pub lits_dir:   &'a Path,
+    pub lits_dir: &'a Path,
 }
 
 // ── Pipeline de compilation ───────────────────────────────────────────────────
@@ -63,14 +60,14 @@ pub struct I18nConfig<'a> {
 /// - Étape 5c    — Pass 2 : génération Timeline + Pool + vespers lookahead
 /// - Étape 6     — Binary Packing `.kald` puis `.lits`
 pub fn compile(
-    registry:   FeastRegistry,
-    output:     &Path,
+    registry: FeastRegistry,
+    output: &Path,
     variant_id: u16,
-    i18n:       Option<I18nConfig<'_>>,
-    lock_path:  &Path,
+    i18n: Option<I18nConfig<'_>>,
+    lock_path: &Path,
 ) -> Result<[u8; 32], ForgeError> {
     // ── Étape 1 — Allocation d'IDs stables ───────────────────────────────────
-    let mut lock  = crate::lock::FeastRegistryLock::load(lock_path)?;
+    let mut lock = crate::lock::FeastRegistryLock::load(lock_path)?;
     let feast_ids = allocate_feast_ids(&registry, &mut lock, lock_path)?;
 
     // ── Validation post-merge : class obligatoire ─────────────────────────────
@@ -79,7 +76,7 @@ pub fn compile(
             return Err(ForgeError::Parse(
                 crate::error::ParseError::MissingClassAfterMerge {
                     slug: feast.slug.clone(),
-                }
+                },
             ));
         }
     }
@@ -102,20 +99,24 @@ pub fn compile(
     // Les `ResolvedCalendar` sont accumulés en mémoire : la Pass 1 (build_feast_registry)
     // requiert la vue complète du corpus avant de pouvoir générer les TimelineEntry.
 
-    let mut all_resolved: Vec<(resolution::ResolvedCalendar, canonicalization::SeasonBoundaries)> =
-        Vec::with_capacity(431);
+    let mut all_resolved: Vec<(
+        resolution::ResolvedCalendar,
+        canonicalization::SeasonBoundaries,
+    )> = Vec::with_capacity(431);
 
     for year in 1969u16..=2399 {
-        let canon    = canonicalize_year(year, &registry)?;
-        let sb       = canon.season_boundaries.clone();
+        let canon = canonicalize_year(year, &registry)?;
+        let sb = canon.season_boundaries.clone();
         let resolved = resolve_year(canon, &registry, &feast_ids)?;
         all_resolved.push((resolved, sb));
     }
 
     // ── Étape 5b — Pass 1 : Feast Registry ───────────────────────────────────
 
-    let refs: Vec<(&resolution::ResolvedCalendar, &canonicalization::SeasonBoundaries)> =
-        all_resolved.iter().map(|(r, s)| (r, s)).collect();
+    let refs: Vec<(
+        &resolution::ResolvedCalendar,
+        &canonicalization::SeasonBoundaries,
+    )> = all_resolved.iter().map(|(r, s)| (r, s)).collect();
 
     let feast_registry = build_feast_registry(&refs)?;
 
@@ -132,7 +133,7 @@ pub fn compile(
     // Vespers lookahead — accès simultané i et i+1 via split_at_mut.
     for i in 0..all_entries.len() {
         let (left, right) = all_entries.split_at_mut(i + 1);
-        let next_jan1     = right.first().map(|e| &e[0]);
+        let next_jan1 = right.first().map(|e| &e[0]);
         vespers_lookahead_pass(&mut left[i], feast_registry.as_slice(), next_jan1);
     }
 
@@ -152,15 +153,15 @@ pub fn compile(
         let expected_build_id = &kald_checksum[..8];
         for lang in &lang_refs {
             let lits_path = cfg.lits_dir.join(format!("{}.lits", lang));
-            let header = std::fs::read(&lits_path)
-                .map_err(|e| ForgeError::ArtifactVerificationFailed {
+            let header =
+                std::fs::read(&lits_path).map_err(|e| ForgeError::ArtifactVerificationFailed {
                     kald_path: lits_path.clone(),
-                    reason:    e.to_string(),
+                    reason: e.to_string(),
                 })?;
             if header.len() < 20 {
                 return Err(ForgeError::ArtifactVerificationFailed {
                     kald_path: lits_path.clone(),
-                    reason:    format!("header tronqué ({} octets)", header.len()),
+                    reason: format!("header tronqué ({} octets)", header.len()),
                 });
             }
             let lits_build_id: [u8; 8] = header[12..20].try_into().unwrap();
@@ -197,26 +198,30 @@ pub fn forge_full_range(_range: std::ops::RangeInclusive<u16>) -> Result<Vec<u8>
     eprintln!("[DEBUG] {} fêtes chargées", registry.len());
 
     let feast_ids = {
-        let _guard    = LOCK_MUTEX.lock().unwrap();
+        let _guard = LOCK_MUTEX.lock().unwrap();
         let lock_path = std::env::temp_dir().join("liturgical_forge_test.lock");
-        let mut lock  = crate::lock::FeastRegistryLock::load(&lock_path)?;
+        let mut lock = crate::lock::FeastRegistryLock::load(&lock_path)?;
         allocate_feast_ids(&registry, &mut lock, &lock_path)?
     };
 
     // Pass 1a : résolution de toutes les années
-    let mut all_resolved: Vec<(resolution::ResolvedCalendar, canonicalization::SeasonBoundaries)> =
-        Vec::with_capacity(431);
+    let mut all_resolved: Vec<(
+        resolution::ResolvedCalendar,
+        canonicalization::SeasonBoundaries,
+    )> = Vec::with_capacity(431);
 
     for year in 1969u16..=2399 {
-        let canon    = canonicalize_year(year, &registry)?;
-        let sb       = canon.season_boundaries.clone();
+        let canon = canonicalize_year(year, &registry)?;
+        let sb = canon.season_boundaries.clone();
         let resolved = resolve_year(canon, &registry, &feast_ids)?;
         all_resolved.push((resolved, sb));
     }
 
     // Pass 1b : Feast Registry
-    let refs: Vec<(&resolution::ResolvedCalendar, &canonicalization::SeasonBoundaries)> =
-        all_resolved.iter().map(|(r, s)| (r, s)).collect();
+    let refs: Vec<(
+        &resolution::ResolvedCalendar,
+        &canonicalization::SeasonBoundaries,
+    )> = all_resolved.iter().map(|(r, s)| (r, s)).collect();
     let feast_registry = build_feast_registry(&refs)?;
 
     // Pass 2 : Timeline + Pool
@@ -231,7 +236,7 @@ pub fn forge_full_range(_range: std::ops::RangeInclusive<u16>) -> Result<Vec<u8>
     // Vespers lookahead
     for i in 0..all_entries.len() {
         let (left, right) = all_entries.split_at_mut(i + 1);
-        let next_jan1     = right.first().map(|e| &e[0]);
+        let next_jan1 = right.first().map(|e| &e[0]);
         vespers_lookahead_pass(&mut left[i], feast_registry.as_slice(), next_jan1);
     }
 

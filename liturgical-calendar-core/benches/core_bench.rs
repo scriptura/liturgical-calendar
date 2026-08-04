@@ -7,10 +7,10 @@
 //   cargo bench -p liturgical-calendar-core -- --filter kal_read_entry
 
 use liturgical_calendar_core::{
-    entry::{FeastEntry, TimelineEntry, KALD_FORMAT_VERSION, LAYOUT_DISCRIMINANT},
+    entry::{FeastEntry, KALD_FORMAT_VERSION, LAYOUT_DISCRIMINANT, TimelineEntry},
     ffi::{
-        kal_read_entry, kal_read_feast, kal_read_secondary, kal_scan_flags,
-        kal_validate_header, KAL_ENGINE_OK,
+        KAL_ENGINE_OK, kal_read_entry, kal_read_feast, kal_read_secondary, kal_scan_flags,
+        kal_validate_header,
     },
 };
 use sha2::{Digest, Sha256};
@@ -43,17 +43,17 @@ fn encode_entry(e: &TimelineEntry) -> [u8; 8] {
 /// `slots`    : `(idx_dans_timeline, TimelineEntry)` à écrire dans le Data Body.
 /// `pool`     : contenu brut du Secondary Pool (u16 LE concaténés).
 fn build_kald(
-    entry_count:  u32,
-    registry:     &[FeastEntry],
-    slots:        &[(u32, TimelineEntry)],
-    pool:         &[u8],
+    entry_count: u32,
+    registry: &[FeastEntry],
+    slots: &[(u32, TimelineEntry)],
+    pool: &[u8],
 ) -> Vec<u8> {
     let registry_count = registry.len() as u32;
-    let registry_size  = registry_count as usize * 4;
-    let timeline_size  = entry_count as usize * 8;
-    let pool_offset    = 80u32 + registry_count * 4 + entry_count * 8;
-    let total          = 80 + registry_size + timeline_size + pool.len();
-    let mut buf        = vec![0u8; total];
+    let registry_size = registry_count as usize * 4;
+    let timeline_size = entry_count as usize * 8;
+    let pool_offset = 80u32 + registry_count * 4 + entry_count * 8;
+    let total = 80 + registry_size + timeline_size + pool.len();
+    let mut buf = vec![0u8; total];
 
     // Feast Registry
     for (i, fe) in registry.iter().enumerate() {
@@ -81,17 +81,17 @@ fn build_kald(
     // Header (80 octets)
     buf[0..4].copy_from_slice(b"KALD");
     buf[4..6].copy_from_slice(&KALD_FORMAT_VERSION.to_le_bytes());
-    buf[6..8].copy_from_slice(&0u16.to_le_bytes());                        // variant_id
-    buf[8..10].copy_from_slice(&1969u16.to_le_bytes());                    // epoch
-    buf[10..12].copy_from_slice(&431u16.to_le_bytes());                    // range
-    buf[12..16].copy_from_slice(&entry_count.to_le_bytes());               // entry_count
-    buf[16..20].copy_from_slice(&pool_offset.to_le_bytes());               // pool_offset
-    buf[20..24].copy_from_slice(&(pool.len() as u32).to_le_bytes());       // pool_size
-    buf[24..28].copy_from_slice(&80u32.to_le_bytes());                     // registry_offset
-    buf[28..32].copy_from_slice(&registry_count.to_le_bytes());            // registry_count
+    buf[6..8].copy_from_slice(&0u16.to_le_bytes()); // variant_id
+    buf[8..10].copy_from_slice(&1969u16.to_le_bytes()); // epoch
+    buf[10..12].copy_from_slice(&431u16.to_le_bytes()); // range
+    buf[12..16].copy_from_slice(&entry_count.to_le_bytes()); // entry_count
+    buf[16..20].copy_from_slice(&pool_offset.to_le_bytes()); // pool_offset
+    buf[20..24].copy_from_slice(&(pool.len() as u32).to_le_bytes()); // pool_size
+    buf[24..28].copy_from_slice(&80u32.to_le_bytes()); // registry_offset
+    buf[28..32].copy_from_slice(&registry_count.to_le_bytes()); // registry_count
     // [32..36] feast_id_base + _reserved = 0x00
-    buf[36..68].copy_from_slice(checksum.as_slice());                      // SHA-256
-    buf[68..76].copy_from_slice(&LAYOUT_DISCRIMINANT.to_le_bytes());       // discriminant
+    buf[36..68].copy_from_slice(checksum.as_slice()); // SHA-256
+    buf[68..76].copy_from_slice(&LAYOUT_DISCRIMINANT.to_le_bytes()); // discriminant
     // [76..80] _reserved2 = 0x00
 
     // Validation post-construction — panique si le buffer est invalide.
@@ -139,13 +139,18 @@ fn kald_full() -> &'static [u8] {
         const N: u32 = 431 * 366; // 157 746 entrées
         let registry = synthetic_registry();
         let slots: Vec<(u32, TimelineEntry)> = (0..N)
-            .map(|i| (i, TimelineEntry {
-                primary_index:    (i % 13 + 1) as u16, // registry_index 1-based
-                secondary_offset: 0,
-                occurrence_flags: (i % 3) as u8,       // 0, 1, 2 — simule vesperae/vigilia
-                secondary_count:  0,
-                _reserved:        0,
-            }))
+            .map(|i| {
+                (
+                    i,
+                    TimelineEntry {
+                        primary_index: (i % 13 + 1) as u16, // registry_index 1-based
+                        secondary_offset: 0,
+                        occurrence_flags: (i % 3) as u8, // 0, 1, 2 — simule vesperae/vigilia
+                        secondary_count: 0,
+                        _reserved: 0,
+                    },
+                )
+            })
             .collect();
         build_kald(N, &registry, &slots, &[])
     })
@@ -153,13 +158,16 @@ fn kald_full() -> &'static [u8] {
 
 fn kald_with_secondary() -> &'static [u8] {
     KALD_WITH_SECONDARY.get_or_init(|| {
-        let registry = vec![FeastEntry { feast_id: 1, flags: 0 }];
+        let registry = vec![FeastEntry {
+            feast_id: 1,
+            flags: 0,
+        }];
         let entry = TimelineEntry {
-            primary_index:    1,
+            primary_index: 1,
             secondary_offset: 0,
             occurrence_flags: 0,
-            secondary_count:  2,
-            _reserved:        0,
+            secondary_count: 2,
+            _reserved: 0,
         };
         // Secondary Pool : registry_index 2 et 3 (simulés, pas dans le registre — OK
         // pour ce benchmark car kal_read_secondary ne résout pas les FeastEntry).
@@ -327,7 +335,7 @@ fn kal_scan_flags_single_year() {
             divan::black_box(2025u16),
             divan::black_box(2025u16),
             divan::black_box(0x000Fu16), // mask  : Precedence bits [3:0]
-            divan::black_box(0u16),       // value : Precedence 0
+            divan::black_box(0u16),      // value : Precedence 0
             indices.as_mut_ptr(),
             indices.len() as u32,
             &mut count,

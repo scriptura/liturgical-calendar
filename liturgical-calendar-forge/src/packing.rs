@@ -20,11 +20,11 @@ use std::{
     path::Path,
 };
 
-use sha2::{Digest, Sha256};
 use liturgical_calendar_core::{
-    entry::{TimelineEntry, KALD_FORMAT_VERSION, LAYOUT_DISCRIMINANT},
+    entry::{KALD_FORMAT_VERSION, LAYOUT_DISCRIMINANT, TimelineEntry},
     kal_validate_header,
 };
+use sha2::{Digest, Sha256};
 
 use crate::{
     error::ForgeError,
@@ -32,11 +32,11 @@ use crate::{
 };
 
 /// Années couvertes : 1969–2399.
-const YEAR_COUNT:     u32 = 431;
+const YEAR_COUNT: u32 = 431;
 /// Slots par année (stride constant, incluant Padding doy=59).
 const SLOTS_PER_YEAR: u32 = 366;
 /// Entrées totales dans la Timeline.
-const ENTRY_COUNT:    u32 = YEAR_COUNT * SLOTS_PER_YEAR; // 157 746
+const ENTRY_COUNT: u32 = YEAR_COUNT * SLOTS_PER_YEAR; // 157 746
 
 // ─── build_kald ───────────────────────────────────────────────────────────────
 
@@ -52,15 +52,17 @@ const ENTRY_COUNT:    u32 = YEAR_COUNT * SLOTS_PER_YEAR; // 157 746
 ///   `checksum`   : SHA-256([Registry ∥ Timeline ∥ Pool]).
 ///   `full_bytes` : [Header ∥ Registry ∥ Timeline ∥ Pool].
 pub(crate) fn build_kald(
-    all_entries:    Vec<[TimelineEntry; 366]>,
+    all_entries: Vec<[TimelineEntry; 366]>,
     feast_registry: &FeastRegistryBuilder,
-    pool:           PoolBuilder,
-    variant_id:     u16,
+    pool: PoolBuilder,
+    variant_id: u16,
 ) -> Result<([u8; 32], Vec<u8>), ForgeError> {
     assert_eq!(
-        all_entries.len() as u32, YEAR_COUNT,
+        all_entries.len() as u32,
+        YEAR_COUNT,
         "build_kald : attendu {} années, reçu {}",
-        YEAR_COUNT, all_entries.len()
+        YEAR_COUNT,
+        all_entries.len()
     );
 
     let registry_count = feast_registry.registry_count();
@@ -94,7 +96,7 @@ pub(crate) fn build_kald(
     // ── Sérialisation du Secondary Pool ──────────────────────────────────────
 
     let pool_bytes: Vec<u8> = pool.data.iter().flat_map(|i| i.to_le_bytes()).collect();
-    let pool_size:   u32 = pool_bytes.len() as u32;
+    let pool_size: u32 = pool_bytes.len() as u32;
     let pool_offset: u32 = 80u32 + registry_count * 4 + ENTRY_COUNT * 8;
 
     // ── SHA-256(Registry ∥ Timeline ∥ Pool) ──────────────────────────────────
@@ -113,7 +115,8 @@ pub(crate) fn build_kald(
     // ── Header (80 octets) ───────────────────────────────────────────────────
 
     // feast_id_base : min feast_id du corpus, métadonnée diagnostique.
-    let feast_id_base: u16 = feast_registry.as_slice()
+    let feast_id_base: u16 = feast_registry
+        .as_slice()
         .iter()
         .map(|e| e.feast_id)
         .min()
@@ -128,7 +131,7 @@ pub(crate) fn build_kald(
     header[12..16].copy_from_slice(&ENTRY_COUNT.to_le_bytes());
     header[16..20].copy_from_slice(&pool_offset.to_le_bytes());
     header[20..24].copy_from_slice(&pool_size.to_le_bytes());
-    header[24..28].copy_from_slice(&80u32.to_le_bytes());           // registry_offset = 80
+    header[24..28].copy_from_slice(&80u32.to_le_bytes()); // registry_offset = 80
     header[28..32].copy_from_slice(&registry_count.to_le_bytes());
     header[32..34].copy_from_slice(&feast_id_base.to_le_bytes());
     // [34..36] _reserved = 0x0000
@@ -148,9 +151,7 @@ pub(crate) fn build_kald(
 
     // ── Validation post-construction ──────────────────────────────────────────
 
-    let rc = unsafe {
-        kal_validate_header(full.as_ptr(), full.len(), std::ptr::null_mut())
-    };
+    let rc = unsafe { kal_validate_header(full.as_ptr(), full.len(), std::ptr::null_mut()) };
     if rc != 0 {
         return Err(ForgeError::KaldValidationFailed { code: rc });
     }
@@ -164,15 +165,15 @@ pub(crate) fn build_kald(
 ///
 /// Même pré-conditions que `build_kald` : vespers_lookahead_pass déjà appliquée.
 pub(crate) fn write_kald(
-    path:           &Path,
-    all_entries:    Vec<[TimelineEntry; 366]>,
+    path: &Path,
+    all_entries: Vec<[TimelineEntry; 366]>,
     feast_registry: &FeastRegistryBuilder,
-    pool:           PoolBuilder,
-    variant_id:     u16,
+    pool: PoolBuilder,
+    variant_id: u16,
 ) -> Result<[u8; 32], ForgeError> {
     let (checksum, full) = build_kald(all_entries, feast_registry, pool, variant_id)?;
 
-    let file  = std::fs::File::create(path).map_err(ForgeError::Io)?;
+    let file = std::fs::File::create(path).map_err(ForgeError::Io)?;
     let mut w = BufWriter::new(file);
     w.write_all(&full).map_err(ForgeError::Io)?;
     w.flush().map_err(ForgeError::Io)?;

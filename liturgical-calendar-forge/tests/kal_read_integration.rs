@@ -15,10 +15,8 @@ use std::process::Command;
 use std::sync::OnceLock;
 
 use liturgical_calendar_forge::{
-    compile, I18nConfig, FeastRegistry,
-    canonicalization::compute_easter,
-    parsing::parse_feast_from_yaml,
-    registry::Scope,
+    FeastRegistry, I18nConfig, canonicalization::compute_easter, compile,
+    parsing::parse_feast_from_yaml, registry::Scope,
 };
 
 // ---------------------------------------------------------------------------
@@ -85,7 +83,8 @@ fn setup_i18n(base_dir: &PathBuf) -> PathBuf {
     fs::write(
         la_dir.join("dominica_resurrectionis.yaml"),
         "version: 1\nhistory:\n  - from: 1969\n    label: \"Dominica Resurrectionis\"\n",
-    ).unwrap();
+    )
+    .unwrap();
 
     // Dominica II Paschae — label + annotation
     fs::write(
@@ -101,21 +100,21 @@ fn setup_i18n(base_dir: &PathBuf) -> PathBuf {
 // ---------------------------------------------------------------------------
 
 struct Fixture {
-    kald_path:   PathBuf,
-    lits_path:   PathBuf,
-    easter_doy:  u16,
+    kald_path: PathBuf,
+    lits_path: PathBuf,
+    easter_doy: u16,
 }
 
 static FIXTURE: OnceLock<Fixture> = OnceLock::new();
 
 fn fixture() -> &'static Fixture {
     FIXTURE.get_or_init(|| {
-        let base     = tmp();
+        let base = tmp();
         let lits_dir = base.join("lits");
         fs::create_dir_all(&lits_dir).unwrap();
 
         let rite_root = setup_i18n(&base);
-        let registry  = minimal_registry_with_annotation();
+        let registry = minimal_registry_with_annotation();
 
         let kald_path = base.join("test.kald");
 
@@ -133,13 +132,17 @@ fn fixture() -> &'static Fixture {
         .expect("compile doit réussir");
 
         // Renommer la.lits produit par compile
-        let lits_src  = lits_dir.join("la.lits");
+        let lits_src = lits_dir.join("la.lits");
         let lits_path = base.join("test_la.lits");
         fs::rename(&lits_src, &lits_path).expect("renommage la.lits");
 
         let easter_doy = compute_easter(2025);
 
-        Fixture { kald_path, lits_path, easter_doy }
+        Fixture {
+            kald_path,
+            lits_path,
+            easter_doy,
+        }
     })
 }
 
@@ -168,27 +171,44 @@ fn stderr(output: &std::process::Output) -> String {
 
 #[test]
 fn kal_read_exit_ok_on_valid_entry() {
-    let f   = fixture();
+    let f = fixture();
     let out = run(&[
-        "--kald", f.kald_path.to_str().unwrap(),
-        "--year", "2025",
-        "--doy",  &f.easter_doy.to_string(),
+        "--kald",
+        f.kald_path.to_str().unwrap(),
+        "--year",
+        "2025",
+        "--doy",
+        &f.easter_doy.to_string(),
     ]);
-    assert!(out.status.success(), "exit code doit être 0 : {}", stderr(&out));
+    assert!(
+        out.status.success(),
+        "exit code doit être 0 : {}",
+        stderr(&out)
+    );
 }
 
 #[test]
 fn kal_read_valid_entry_contains_feast_id() {
-    let f   = fixture();
+    let f = fixture();
     let out = run(&[
-        "--kald", f.kald_path.to_str().unwrap(),
-        "--year", "2025",
-        "--doy",  &f.easter_doy.to_string(),
+        "--kald",
+        f.kald_path.to_str().unwrap(),
+        "--year",
+        "2025",
+        "--doy",
+        &f.easter_doy.to_string(),
     ]);
     let s = stdout(&out);
-    assert!(s.contains("feast_id"), "stdout doit contenir feast_id :\n{s}");
-    assert!(s.contains("SollemnitatesGenerales") || s.contains("SollemnitatesMaiores") || s.contains("precedence"),
-        "stdout doit mentionner la précédence :\n{s}");
+    assert!(
+        s.contains("feast_id"),
+        "stdout doit contenir feast_id :\n{s}"
+    );
+    assert!(
+        s.contains("SollemnitatesGenerales")
+            || s.contains("SollemnitatesMaiores")
+            || s.contains("precedence"),
+        "stdout doit mentionner la précédence :\n{s}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -197,13 +217,20 @@ fn kal_read_valid_entry_contains_feast_id() {
 
 #[test]
 fn kal_read_padding_entry_doy_59() {
-    let f   = fixture();
+    let f = fixture();
     let out = run(&[
-        "--kald", f.kald_path.to_str().unwrap(),
-        "--year", "2025",
-        "--doy",  "59",
+        "--kald",
+        f.kald_path.to_str().unwrap(),
+        "--year",
+        "2025",
+        "--doy",
+        "59",
     ]);
-    assert!(out.status.success(), "exit code doit être 0 : {}", stderr(&out));
+    assert!(
+        out.status.success(),
+        "exit code doit être 0 : {}",
+        stderr(&out)
+    );
     let s = stdout(&out);
     assert!(
         s.contains("Padding Entry"),
@@ -217,14 +244,22 @@ fn kal_read_padding_entry_doy_59() {
 
 #[test]
 fn kal_read_lits_shows_label() {
-    let f   = fixture();
+    let f = fixture();
     let out = run(&[
-        "--kald", f.kald_path.to_str().unwrap(),
-        "--lits", f.lits_path.to_str().unwrap(),
-        "--year", "2025",
-        "--doy",  &f.easter_doy.to_string(),
+        "--kald",
+        f.kald_path.to_str().unwrap(),
+        "--lits",
+        f.lits_path.to_str().unwrap(),
+        "--year",
+        "2025",
+        "--doy",
+        &f.easter_doy.to_string(),
     ]);
-    assert!(out.status.success(), "exit code doit être 0 : {}", stderr(&out));
+    assert!(
+        out.status.success(),
+        "exit code doit être 0 : {}",
+        stderr(&out)
+    );
     let s = stdout(&out);
     assert!(
         s.contains("Dominica Resurrectionis"),
@@ -238,15 +273,23 @@ fn kal_read_lits_shows_label() {
 
 #[test]
 fn kal_read_lits_shows_annotation() {
-    let f      = fixture();
+    let f = fixture();
     let doy_ii = f.easter_doy + 7;
-    let out    = run(&[
-        "--kald", f.kald_path.to_str().unwrap(),
-        "--lits", f.lits_path.to_str().unwrap(),
-        "--year", "2025",
-        "--doy",  &doy_ii.to_string(),
+    let out = run(&[
+        "--kald",
+        f.kald_path.to_str().unwrap(),
+        "--lits",
+        f.lits_path.to_str().unwrap(),
+        "--year",
+        "2025",
+        "--doy",
+        &doy_ii.to_string(),
     ]);
-    assert!(out.status.success(), "exit code doit être 0 : {}", stderr(&out));
+    assert!(
+        out.status.success(),
+        "exit code doit être 0 : {}",
+        stderr(&out)
+    );
     let s = stdout(&out);
     assert!(
         s.contains("*In albis*"),
@@ -260,14 +303,22 @@ fn kal_read_lits_shows_annotation() {
 
 #[test]
 fn kal_read_lits_no_annotation_not_shown() {
-    let f   = fixture();
+    let f = fixture();
     let out = run(&[
-        "--kald", f.kald_path.to_str().unwrap(),
-        "--lits", f.lits_path.to_str().unwrap(),
-        "--year", "2025",
-        "--doy",  &f.easter_doy.to_string(),
+        "--kald",
+        f.kald_path.to_str().unwrap(),
+        "--lits",
+        f.lits_path.to_str().unwrap(),
+        "--year",
+        "2025",
+        "--doy",
+        &f.easter_doy.to_string(),
     ]);
-    assert!(out.status.success(), "exit code doit être 0 : {}", stderr(&out));
+    assert!(
+        out.status.success(),
+        "exit code doit être 0 : {}",
+        stderr(&out)
+    );
     let s = stdout(&out);
     // Le label doit être présent.
     assert!(s.contains("Dominica Resurrectionis"), "label absent :\n{s}");
@@ -284,7 +335,7 @@ fn kal_read_lits_no_annotation_not_shown() {
 
 #[test]
 fn kal_read_build_id_mismatch_returns_error() {
-    let f    = fixture();
+    let f = fixture();
     let base = tmp();
 
     // Fabriquer un .lits avec build_id corrompu (octet 12 muté)
@@ -294,10 +345,14 @@ fn kal_read_build_id_mismatch_returns_error() {
     fs::write(&bad_lits, &lits).unwrap();
 
     let out = run(&[
-        "--kald", f.kald_path.to_str().unwrap(),
-        "--lits", bad_lits.to_str().unwrap(),
-        "--year", "2025",
-        "--doy",  &f.easter_doy.to_string(),
+        "--kald",
+        f.kald_path.to_str().unwrap(),
+        "--lits",
+        bad_lits.to_str().unwrap(),
+        "--year",
+        "2025",
+        "--doy",
+        &f.easter_doy.to_string(),
     ]);
     assert!(
         !out.status.success(),
@@ -317,9 +372,12 @@ fn kal_read_build_id_mismatch_returns_error() {
 #[test]
 fn kal_read_missing_kald_returns_error() {
     let out = run(&[
-        "--kald", "/tmp/inexistant_kal_read_test.kald",
-        "--year", "2025",
-        "--doy",  "0",
+        "--kald",
+        "/tmp/inexistant_kal_read_test.kald",
+        "--year",
+        "2025",
+        "--doy",
+        "0",
     ]);
     assert!(
         !out.status.success(),

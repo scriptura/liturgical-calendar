@@ -1,5 +1,5 @@
-use std::collections::BTreeMap;
 use liturgical_calendar_core::LiturgicalPeriod;
+use std::collections::BTreeMap;
 
 use crate::error::ForgeError;
 use crate::registry::{FeastRegistry, TransferTarget};
@@ -8,8 +8,7 @@ use crate::registry::{FeastRegistry, TransferTarget};
 // MONTH_STARTS — table pseudo-DOY (0-indexé, Mar = 60, slot 59 = 29 fév)
 // ---------------------------------------------------------------------------
 
-pub const MONTH_STARTS: [u16; 12] =
-    [0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335];
+pub const MONTH_STARTS: [u16; 12] = [0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335];
 
 // ---------------------------------------------------------------------------
 // is_leap_year
@@ -26,14 +25,30 @@ pub fn is_leap_year(year: u16) -> bool {
 
 /// Pseudo-DOY → DOY effectif (0-indexé dans l'année civile)
 fn pseudo_to_actual(year: u16, pseudo: u16) -> u16 {
-    if !is_leap_year(year) && pseudo >= 60 { pseudo - 1 } else { pseudo }
+    if !is_leap_year(year) && pseudo >= 60 {
+        pseudo - 1
+    } else {
+        pseudo
+    }
 }
 
 /// DOY effectif (0-indexé) → (mois 1-12, jour 1-31)
 fn actual_to_date(year: u16, actual: u16) -> (u8, u8) {
     let leap = is_leap_year(year);
-    let month_days: [u16; 12] =
-        [31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let month_days: [u16; 12] = [
+        31,
+        if leap { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ];
     let mut rem = actual;
     for (m, &days) in month_days.iter().enumerate() {
         if rem < days {
@@ -59,7 +74,9 @@ fn weekday_sakamoto(year: u16, month: u8, day: u8) -> u8 {
     let mut y = year as i32;
     let m = month as i32;
     let d = day as i32;
-    if m < 3 { y -= 1; }
+    if m < 3 {
+        y -= 1;
+    }
     let raw = (y + y / 4 - y / 100 + y / 400 + T[(m - 1) as usize] + d) % 7;
     ((raw + 6) % 7) as u8
 }
@@ -89,7 +106,7 @@ pub fn meeus_jones_butcher(year: u16) -> (u8, u8) {
     let l = (32 + 2 * e + 2 * i - h - k) % 7;
     let m = (a + 11 * h + 22 * l) / 451;
     let month = ((h + l - 7 * m + 114) / 31) as u8;
-    let day   = (((h + l - 7 * m + 114) % 31) + 1) as u8;
+    let day = (((h + l - 7 * m + 114) % 31) + 1) as u8;
     (month, day)
 }
 
@@ -172,12 +189,15 @@ pub fn resolve_tempus_ordinarium_post_epiphaniam(year: u16) -> u16 {
 /// slot sans y atterrir : tout `seg1_raw ≥ 59` est incrémenté d'un jour pour
 /// rester sur un dimanche réel dans le calendrier effectif.
 pub fn resolve_tempus_ordinarium_dispatch(
-    year:            u16,
+    year: u16,
     post_epiphaniam: u16,
-    adventus_doy:    u16,
-    ordinal:         u8,
+    adventus_doy: u16,
+    ordinal: u8,
 ) -> u16 {
-    debug_assert!(ordinal >= 2, "L'ordinal I n'est pas associé à un dimanche propre");
+    debug_assert!(
+        ordinal >= 2,
+        "L'ordinal I n'est pas associé à un dimanche propre"
+    );
     let ash_wednesday = compute_easter(year).saturating_sub(46);
     let seg1_raw = (post_epiphaniam - 1) + 7 * (ordinal as u16 - 1);
     let seg1 = if !is_leap_year(year) && seg1_raw >= 59 {
@@ -200,20 +220,23 @@ pub type AnchorTable = BTreeMap<String, u16>;
 
 pub fn build_anchor_table(year: u16) -> AnchorTable {
     let mut t = BTreeMap::new();
-    let nativitas           = resolve_nativitas(year);
-    let epiphania           = resolve_epiphania(year);
-    let epiphania_dominica  = resolve_epiphania_dominica(year);
-    let adventus            = resolve_adventus(year);
-    let easter              = compute_easter(year);
-    let pentecost           = easter + 49;
-    let post_epiphaniam     = resolve_tempus_ordinarium_post_epiphaniam(year);
-    t.insert("nativitas".to_string(),                          nativitas);
-    t.insert("epiphania".to_string(),                          epiphania);
-    t.insert("epiphania_dominica".to_string(),                 epiphania_dominica);
-    t.insert("adventus".to_string(),                           adventus);
-    t.insert("pascha".to_string(),                             easter);
-    t.insert("pentecostes".to_string(),                        pentecost);
-    t.insert("tempus_ordinarium_post_epiphaniam".to_string(),  post_epiphaniam);
+    let nativitas = resolve_nativitas(year);
+    let epiphania = resolve_epiphania(year);
+    let epiphania_dominica = resolve_epiphania_dominica(year);
+    let adventus = resolve_adventus(year);
+    let easter = compute_easter(year);
+    let pentecost = easter + 49;
+    let post_epiphaniam = resolve_tempus_ordinarium_post_epiphaniam(year);
+    t.insert("nativitas".to_string(), nativitas);
+    t.insert("epiphania".to_string(), epiphania);
+    t.insert("epiphania_dominica".to_string(), epiphania_dominica);
+    t.insert("adventus".to_string(), adventus);
+    t.insert("pascha".to_string(), easter);
+    t.insert("pentecostes".to_string(), pentecost);
+    t.insert(
+        "tempus_ordinarium_post_epiphaniam".to_string(),
+        post_epiphaniam,
+    );
     t
 }
 
@@ -223,20 +246,20 @@ pub fn build_anchor_table(year: u16) -> AnchorTable {
 
 #[derive(Debug, Clone)]
 pub struct SeasonBoundaries {
-    pub adventus:             u16,
-    pub nativitas:            u16,
-    pub epiphania:            u16,
-    pub epiphania_dominica:   u16,
-    pub ash_wednesday:        u16,
-    pub palm_sunday:          u16,
-    pub easter:               u16,
-    pub pentecost:            u16,
+    pub adventus: u16,
+    pub nativitas: u16,
+    pub epiphania: u16,
+    pub epiphania_dominica: u16,
+    pub ash_wednesday: u16,
+    pub palm_sunday: u16,
+    pub easter: u16,
+    pub pentecost: u16,
 }
 
 impl SeasonBoundaries {
     pub fn compute(year: u16) -> Self {
         let easter = compute_easter(year);
-        let leap   = is_leap_year(year);
+        let leap = is_leap_year(year);
 
         // Mercredi des Cendres : 46 jours calendaires avant Pâques.
         // En pseudo-DOY, le slot 59 (29 fév fictif) s'intercale entre
@@ -244,18 +267,22 @@ impl SeasonBoundaries {
         // Pâques est toujours après le slot 59 (DOY ≥ 81).
         // Si le résultat brut atterrit sur le slot fantôme ou avant,
         // la soustraction a traversé le slot fictif → correction de −1.
-        let raw_ash       = easter.saturating_sub(46);
-        let ash_wednesday = if !leap && raw_ash <= 59 { raw_ash - 1 } else { raw_ash };
+        let raw_ash = easter.saturating_sub(46);
+        let ash_wednesday = if !leap && raw_ash <= 59 {
+            raw_ash - 1
+        } else {
+            raw_ash
+        };
 
         Self {
-            adventus:           resolve_adventus(year),
-            nativitas:          resolve_nativitas(year),
-            epiphania:          resolve_epiphania(year),
+            adventus: resolve_adventus(year),
+            nativitas: resolve_nativitas(year),
+            epiphania: resolve_epiphania(year),
             epiphania_dominica: resolve_epiphania_dominica(year),
             ash_wednesday,
-            palm_sunday:        easter.saturating_sub(7),
+            palm_sunday: easter.saturating_sub(7),
             easter,
-            pentecost:          easter + 49,
+            pentecost: easter + 49,
         }
     }
 
@@ -266,7 +293,7 @@ impl SeasonBoundaries {
 
         // Triduum Paschale : Feria V in Cena Domini → Sabbatum Sanctum.
         let triduum_start = self.easter.saturating_sub(3);
-        let triduum_end   = self.easter.saturating_sub(1);
+        let triduum_end = self.easter.saturating_sub(1);
         if doy >= triduum_start && doy <= triduum_end {
             return LiturgicalPeriod::TriduumPaschale;
         }
@@ -313,7 +340,7 @@ pub type PreResolvedTransfers = BTreeMap<(String, String), u16>;
 
 fn resolve_mobile_transfer_targets(
     registry: &FeastRegistry,
-    anchors:  &AnchorTable,
+    anchors: &AnchorTable,
 ) -> Result<PreResolvedTransfers, ForgeError> {
     let mut result = BTreeMap::new();
 
@@ -321,14 +348,14 @@ fn resolve_mobile_transfer_targets(
         for entry in &feast.history {
             for transfer in &entry.transfers {
                 if let TransferTarget::Mobile { anchor, offset } = &transfer.target {
-                    let anchor_doy = anchors.get(anchor.as_str())
-                        .ok_or_else(|| ForgeError::UnresolvedAnchor { anchor: anchor.clone() })?;
+                    let anchor_doy = anchors.get(anchor.as_str()).ok_or_else(|| {
+                        ForgeError::UnresolvedAnchor {
+                            anchor: anchor.clone(),
+                        }
+                    })?;
                     let doy_dst = (*anchor_doy as i32 + offset) as u16;
                     for c in &transfer.collides {
-                        result.insert(
-                            (feast.slug.clone(), c.clone()),
-                            doy_dst,
-                        );
+                        result.insert((feast.slug.clone(), c.clone()), doy_dst);
                     }
                 }
             }
@@ -343,20 +370,26 @@ fn resolve_mobile_transfer_targets(
 // ---------------------------------------------------------------------------
 
 pub struct CanonicalizedYear {
-    pub year:                    u16,
-    pub anchors:                 AnchorTable,
-    pub season_boundaries:       SeasonBoundaries,
-    pub pre_resolved_transfers:  PreResolvedTransfers,
+    pub year: u16,
+    pub anchors: AnchorTable,
+    pub season_boundaries: SeasonBoundaries,
+    pub pre_resolved_transfers: PreResolvedTransfers,
 }
 
-pub fn canonicalize_year(year: u16, registry: &FeastRegistry)
-    -> Result<CanonicalizedYear, ForgeError>
-{
-    let anchors              = build_anchor_table(year);
-    let season_boundaries    = SeasonBoundaries::compute(year);
+pub fn canonicalize_year(
+    year: u16,
+    registry: &FeastRegistry,
+) -> Result<CanonicalizedYear, ForgeError> {
+    let anchors = build_anchor_table(year);
+    let season_boundaries = SeasonBoundaries::compute(year);
     let pre_resolved_transfers = resolve_mobile_transfer_targets(registry, &anchors)?;
 
-    Ok(CanonicalizedYear { year, anchors, season_boundaries, pre_resolved_transfers })
+    Ok(CanonicalizedYear {
+        year,
+        anchors,
+        season_boundaries,
+        pre_resolved_transfers,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -379,10 +412,10 @@ mod tests {
 
     #[test]
     fn leap_year() {
-        assert!( is_leap_year(2024));
+        assert!(is_leap_year(2024));
         assert!(!is_leap_year(2025));
         assert!(!is_leap_year(2100));
-        assert!( is_leap_year(2000));
+        assert!(is_leap_year(2000));
     }
 
     // --- Pâques ---
@@ -403,7 +436,9 @@ mod tests {
             let doy = compute_easter(year);
             assert!(
                 doy >= 81 && doy <= 115 && doy != 59,
-                "year {}: DOY {} hors [81,115] ou == 59", year, doy
+                "year {}: DOY {} hors [81,115] ou == 59",
+                year,
+                doy
             );
         }
     }
@@ -436,8 +471,11 @@ mod tests {
         for year in 1969u16..=2399 {
             let doy = resolve_tempus_ordinarium_post_epiphaniam(year);
             assert_eq!(
-                weekday_of_doy(year, doy), 0,
-                "year {}: post_epiphaniam DOY {} n'est pas un lundi", year, doy
+                weekday_of_doy(year, doy),
+                0,
+                "year {}: post_epiphaniam DOY {} n'est pas un lundi",
+                year,
+                doy
             );
         }
     }
@@ -446,15 +484,16 @@ mod tests {
     fn dispatch_2026_segment_i_ordinaux_ii_vi() {
         // 2026 : epiphania = 10, ash_wednesday = 48 (corrigé phantom slot), adventus = 333
         // Dominica II–VI restent dans le Segment I.
-        let post_ep  = resolve_tempus_ordinarium_post_epiphaniam(2026);
+        let post_ep = resolve_tempus_ordinarium_post_epiphaniam(2026);
         let adventus = resolve_adventus(2026);
-        let expected = [17u16, 24, 31, 38, 45];        // ordinaux II–VI
+        let expected = [17u16, 24, 31, 38, 45]; // ordinaux II–VI
         for (i, &exp) in expected.iter().enumerate() {
             let ord = (i + 2) as u8;
             assert_eq!(
                 resolve_tempus_ordinarium_dispatch(2026, post_ep, adventus, ord),
                 exp,
-                "Dominica {} per annum 2026", ord
+                "Dominica {} per annum 2026",
+                ord
             );
         }
     }
@@ -462,7 +501,7 @@ mod tests {
     #[test]
     fn dispatch_2026_segment_i_boundary() {
         // Dominica VII 2026 : DOY seg1 = 10 + 42 = 52 ≥ ash(48) → Segment II.
-        let post_ep  = resolve_tempus_ordinarium_post_epiphaniam(2026);
+        let post_ep = resolve_tempus_ordinarium_post_epiphaniam(2026);
         let adventus = resolve_adventus(2026);
         let seg2 = resolve_tempus_ordinarium_dispatch(2026, post_ep, adventus, 7);
         assert_eq!(seg2, resolve_tempus_ordinarium(adventus, 7));
@@ -475,7 +514,7 @@ mod tests {
         // Le slot DOY 59 (29 fév fictif) est traversé sans y atterrir : +1 de correction.
         // seg1 = 61 (2 mars) < ash_wednesday(63) → Segment I.
         // Sans correction : DOY 60 = 1er mars = samedi (décalage d'un jour après le gap).
-        let post_ep  = resolve_tempus_ordinarium_post_epiphaniam(2003);
+        let post_ep = resolve_tempus_ordinarium_post_epiphaniam(2003);
         let adventus = resolve_adventus(2003);
         let doy = resolve_tempus_ordinarium_dispatch(2003, post_ep, adventus, 8);
         assert_eq!(doy, 61, "Dominica VIII 2003 : DOY 61 attendu (2 mars)");
@@ -486,13 +525,17 @@ mod tests {
     fn dispatch_segment_i_invariant_all_years() {
         // Pour tout ordinal en Segment I, le DOY résolu doit être un dimanche.
         for year in 1969u16..=2399 {
-            let post_ep  = resolve_tempus_ordinarium_post_epiphaniam(year);
+            let post_ep = resolve_tempus_ordinarium_post_epiphaniam(year);
             let adventus = resolve_adventus(year);
             for ord in 2u8..=8 {
                 let doy = resolve_tempus_ordinarium_dispatch(year, post_ep, adventus, ord);
                 assert_eq!(
-                    weekday_of_doy(year, doy), 6,
-                    "year {} ord {}: DOY {} n'est pas un dimanche", year, ord, doy
+                    weekday_of_doy(year, doy),
+                    6,
+                    "year {} ord {}: DOY {} n'est pas un dimanche",
+                    year,
+                    ord,
+                    doy
                 );
             }
         }
@@ -515,7 +558,9 @@ mod tests {
             let doy = resolve_epiphania_dominica(year);
             assert!(
                 doy >= 1 && doy <= 7,
-                "year {}: epiphania_dominica DOY {} hors [1, 7]", year, doy
+                "year {}: epiphania_dominica DOY {} hors [1, 7]",
+                year,
+                doy
             );
         }
     }
@@ -525,8 +570,11 @@ mod tests {
         for year in 1969u16..=2399 {
             let doy = resolve_epiphania_dominica(year);
             assert_eq!(
-                weekday_of_doy(year, doy), 6,
-                "year {}: epiphania_dominica DOY {} n'est pas un dimanche", year, doy
+                weekday_of_doy(year, doy),
+                6,
+                "year {}: epiphania_dominica DOY {} n'est pas un dimanche",
+                year,
+                doy
             );
         }
     }
@@ -558,7 +606,6 @@ mod tests {
         assert_eq!(resolve_adventus(2025), 334);
     }
 
-
     // --- ash_wednesday --- correction pseudo-DOY phantom slot
 
     #[test]
@@ -566,8 +613,15 @@ mod tests {
         // Easter 2026 = DOY 95 (April 5). raw = 95−46 = 49 = Feb 19 (jeudi).
         // Correction phantom : !leap && 49 ≤ 59 → ash_wednesday = 48 = Feb 18 (mercredi).
         let sb = SeasonBoundaries::compute(2026);
-        assert_eq!(sb.ash_wednesday, 48, "Mercredi des Cendres 2026 doit être DOY 48 (18 fév)");
-        assert_eq!(weekday_of_doy(2026, sb.ash_wednesday), 2, "DOY 48 doit être un mercredi");
+        assert_eq!(
+            sb.ash_wednesday, 48,
+            "Mercredi des Cendres 2026 doit être DOY 48 (18 fév)"
+        );
+        assert_eq!(
+            weekday_of_doy(2026, sb.ash_wednesday),
+            2,
+            "DOY 48 doit être un mercredi"
+        );
     }
 
     #[test]
@@ -575,9 +629,11 @@ mod tests {
         for year in 1969u16..=2399 {
             let sb = SeasonBoundaries::compute(year);
             assert_eq!(
-                weekday_of_doy(year, sb.ash_wednesday), 2,
+                weekday_of_doy(year, sb.ash_wednesday),
+                2,
                 "year {}: ash_wednesday DOY {} n'est pas un mercredi",
-                year, sb.ash_wednesday
+                year,
+                sb.ash_wednesday
             );
         }
     }
@@ -609,7 +665,8 @@ mod tests {
                 sb.period_of(dominica_ii),
                 LiturgicalPeriod::TempusOrdinarium,
                 "year {}: Dominica II per annum (DOY {}) doit être TempusOrdinarium",
-                year, dominica_ii
+                year,
+                dominica_ii
             );
         }
     }
@@ -622,7 +679,8 @@ mod tests {
                 sb.period_of(sb.ash_wednesday),
                 LiturgicalPeriod::TempusQuadragesimae,
                 "year {}: ash_wednesday DOY {} doit être TempusQuadragesimae",
-                year, sb.ash_wednesday
+                year,
+                sb.ash_wednesday
             );
         }
     }
@@ -636,7 +694,8 @@ mod tests {
                 sb.period_of(sb.epiphania),
                 LiturgicalPeriod::TempusNativitatis,
                 "year {}: epiphania DOY {} doit être TempusNativitatis",
-                year, sb.epiphania
+                year,
+                sb.epiphania
             );
         }
     }
@@ -672,8 +731,8 @@ mod tests {
 
     #[test]
     fn pre_resolved_transfer_pascha_offset() {
-        use crate::registry::{FeastRegistry, Scope};
         use crate::parsing::parse_feast_from_yaml;
+        use crate::registry::{FeastRegistry, Scope};
 
         let yaml_iosephi = r#"
 version: 1
@@ -707,7 +766,12 @@ history:
 
         let mut registry = FeastRegistry::new();
         let def_iosephi = parse_feast_from_yaml("iosephi", Scope::Universal, yaml_iosephi).unwrap();
-        let def_palmis  = parse_feast_from_yaml("dominica_in_palmis_de_passione_domini", Scope::Universal, yaml_palmis).unwrap();
+        let def_palmis = parse_feast_from_yaml(
+            "dominica_in_palmis_de_passione_domini",
+            Scope::Universal,
+            yaml_palmis,
+        )
+        .unwrap();
         registry.insert(def_iosephi);
         registry.insert(def_palmis);
 
@@ -716,7 +780,10 @@ history:
         assert_eq!(easter_2016, 86, "Pâques 2016 doit être DOY 86 (27 mars)");
 
         let cy = canonicalize_year(2016, &registry).unwrap();
-        let key = ("iosephi".to_string(), "dominica_in_palmis_de_passione_domini".to_string());
+        let key = (
+            "iosephi".to_string(),
+            "dominica_in_palmis_de_passione_domini".to_string(),
+        );
         let doy_dst = cy.pre_resolved_transfers[&key];
         // pascha(86) + (−8) = 78 = Mar 19
         assert_eq!(doy_dst, 78);

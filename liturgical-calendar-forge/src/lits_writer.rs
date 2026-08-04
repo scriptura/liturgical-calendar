@@ -60,9 +60,9 @@ const ANNOTATION_ABSENT: u32 = u32::MAX;
 /// |  6..10 | label_offset       | u32 LE | offset depuis début pool    |
 /// | 10..14 | annotation_offset  | u32 LE | 0xFFFF_FFFF si absent      |
 pub(crate) fn write_lits(
-    path:          &Path,
-    table:         &LabelTable,
-    lang:          &str,
+    path: &Path,
+    table: &LabelTable,
+    lang: &str,
     kald_checksum: &[u8; 32],
 ) -> Result<(), ForgeError> {
     // ── Collecte des entrées pour cette langue ────────────────────────────────
@@ -80,8 +80,8 @@ pub(crate) fn write_lits(
     // Labels et annotations interleaved, null-terminés.
     // `ANNOTATION_ABSENT` (0xFFFF_FFFF) si annotation absente — aucun octet pool.
 
-    let mut pool:               Vec<u8> = Vec::new();
-    let mut label_offsets:      Vec<u32> = Vec::with_capacity(entries.len());
+    let mut pool: Vec<u8> = Vec::new();
+    let mut label_offsets: Vec<u32> = Vec::with_capacity(entries.len());
     let mut annotation_offsets: Vec<u32> = Vec::with_capacity(entries.len());
 
     for (_, _, _, resolved) in &entries {
@@ -101,7 +101,7 @@ pub(crate) fn write_lits(
         }
     }
 
-    let pool_size:   u32 = pool.len() as u32;
+    let pool_size: u32 = pool.len() as u32;
     let pool_offset: u32 = 32 + entry_count * 14;
 
     // ── Header (32 octets) ────────────────────────────────────────────────────
@@ -113,7 +113,11 @@ pub(crate) fn write_lits(
 
     {
         let lang_bytes = lang.as_bytes();
-        debug_assert!(lang_bytes.len() <= 6, "code langue > 6 octets UTF-8 : {}", lang);
+        debug_assert!(
+            lang_bytes.len() <= 6,
+            "code langue > 6 octets UTF-8 : {}",
+            lang
+        );
         let copy_len = lang_bytes.len().min(6);
         header[6..6 + copy_len].copy_from_slice(&lang_bytes[..copy_len]);
     }
@@ -127,8 +131,9 @@ pub(crate) fn write_lits(
 
     let mut entry_table: Vec<u8> = Vec::with_capacity((entry_count * 14) as usize);
 
-    for ((feast_id, from, to, _), (label_off, ann_off)) in
-        entries.iter().zip(label_offsets.iter().zip(annotation_offsets.iter()))
+    for ((feast_id, from, to, _), (label_off, ann_off)) in entries
+        .iter()
+        .zip(label_offsets.iter().zip(annotation_offsets.iter()))
     {
         entry_table.extend_from_slice(&feast_id.to_le_bytes());
         entry_table.extend_from_slice(&from.to_le_bytes());
@@ -145,7 +150,7 @@ pub(crate) fn write_lits(
 
     // ── Assemblage et écriture ────────────────────────────────────────────────
 
-    let file  = std::fs::File::create(path).map_err(ForgeError::Io)?;
+    let file = std::fs::File::create(path).map_err(ForgeError::Io)?;
     let mut w = BufWriter::new(file);
 
     w.write_all(&header).map_err(ForgeError::Io)?;

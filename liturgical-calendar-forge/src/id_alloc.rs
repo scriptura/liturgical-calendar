@@ -2,8 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use crate::error::ForgeError;
-use crate::registry::{FeastRegistry, Scope};
 use crate::lock::FeastRegistryLock;
+use crate::registry::{FeastRegistry, Scope};
 
 // ---------------------------------------------------------------------------
 // Pipeline ID Allocation — Layout [SS|CC|IIIIIIIIIIII]
@@ -12,15 +12,15 @@ use crate::lock::FeastRegistryLock;
 /// Mappe le Scope vers son invariant binaire (2 bits).
 fn scope_to_bits(scope: &Scope) -> u8 {
     match scope {
-        Scope::Universal   => 0,
+        Scope::Universal => 0,
         Scope::National(_) => 1,
         Scope::Diocesan(_) => 2,
     }
 }
 
 pub fn allocate_feast_ids(
-    registry:  &FeastRegistry,
-    lock:      &mut FeastRegistryLock,
+    registry: &FeastRegistry,
+    lock: &mut FeastRegistryLock,
     lock_path: &Path,
 ) -> Result<BTreeMap<String, u16>, ForgeError> {
     let mut id_map: BTreeMap<String, u16> = BTreeMap::new();
@@ -40,20 +40,21 @@ pub fn allocate_feast_ids(
 
     // Itération lexicographique garantie (BTreeMap)
     for feast in registry.iter() {
-        let slug       = &feast.slug;
-        let scope_bits = scope_to_bits(&feast.scope);   // 0=Universal, 1=National, 2=Diocesan
-        let category   = feast.category;
+        let slug = &feast.slug;
+        let scope_bits = scope_to_bits(&feast.scope); // 0=Universal, 1=National, 2=Diocesan
+        let category = feast.category;
 
         if let Some(lock_id) = lock.get(slug) {
             // Slug connu dans le lock — vérification conflit YAML.id
             if let Some(yaml_id) = feast.id
-                && yaml_id != lock_id {
-                    return Err(ForgeError::FeastIDLockConflict {
-                        slug:    slug.clone(),
-                        yaml_id,
-                        lock_id,
-                    });
-                }
+                && yaml_id != lock_id
+            {
+                return Err(ForgeError::FeastIDLockConflict {
+                    slug: slug.clone(),
+                    yaml_id,
+                    lock_id,
+                });
+            }
             id_map.insert(slug.clone(), lock_id);
         } else {
             // Nouveau slug — allouer le prochain ID libre dans (scope, category)
@@ -69,8 +70,8 @@ pub fn allocate_feast_ids(
 
 fn allocate_next(
     counters: &mut BTreeMap<(u8, u8), u16>,
-    lock:     &FeastRegistryLock,
-    scope:    u8,
+    lock: &FeastRegistryLock,
+    scope: u8,
     category: u8,
 ) -> Result<u16, ForgeError> {
     let counter = counters.entry((scope, category)).or_insert_with(|| {
@@ -80,9 +81,7 @@ fn allocate_next(
             .entries
             .values()
             .copied()
-            .filter(|&id| {
-                ((id >> 14) as u8) == scope && (((id >> 12) & 0x3) as u8) == category
-            })
+            .filter(|&id| ((id >> 14) as u8) == scope && (((id >> 12) & 0x3) as u8) == category)
             .map(|id| id & 0x0FFF)
             .max()
             .unwrap_or(0);

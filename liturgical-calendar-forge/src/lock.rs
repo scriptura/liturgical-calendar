@@ -1,13 +1,13 @@
+use crate::error::ForgeError;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::Path;
-use serde::{Deserialize, Serialize};
-use crate::error::ForgeError;
 
 /// Contenu du `feast_registry.lock`.
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct FeastRegistryLock {
     /// slug → FeastID alloué (actifs)
-    pub entries:    BTreeMap<String, u16>,
+    pub entries: BTreeMap<String, u16>,
     /// slug → FeastID tombstoné (jamais réalloués)
     pub tombstones: BTreeMap<String, u16>,
 }

@@ -1,9 +1,9 @@
-use std::path::Path;
 use std::fs;
+use std::path::Path;
 
 use crate::error::{ForgeError, ParseError};
-use crate::registry::{FeastRegistry, Scope};
 use crate::parsing::{parse_feast_from_yaml, validate_slug};
+use crate::registry::{FeastRegistry, Scope};
 
 // ---------------------------------------------------------------------------
 // ingest_scope_dir — un scope (temporale/ + sanctorale/)
@@ -12,13 +12,15 @@ use crate::parsing::{parse_feast_from_yaml, validate_slug};
 
 fn ingest_scope_dir(
     scope_dir: &Path,
-    scope:     Scope,
-    registry:  &mut FeastRegistry,
-    is_base:   bool,   // true = universale, false = delta (merge)
+    scope: Scope,
+    registry: &mut FeastRegistry,
+    is_base: bool, // true = universale, false = delta (merge)
 ) -> Result<(), ForgeError> {
     for sub in &["temporale", "sanctorale"] {
         let dir = scope_dir.join(sub);
-        if !dir.exists() { continue; }
+        if !dir.exists() {
+            continue;
+        }
 
         // Collecte récursive — absorbe les sous-répertoires mensuels
         // (sanctorale/01/, sanctorale/03/…) sans changer la logique de tri.
@@ -52,13 +54,10 @@ fn ingest_scope_dir(
     Ok(())
 }
 
-fn collect_yaml_recursive(
-    dir: &Path,
-    out: &mut Vec<std::path::PathBuf>,
-) -> Result<(), ForgeError> {
+fn collect_yaml_recursive(dir: &Path, out: &mut Vec<std::path::PathBuf>) -> Result<(), ForgeError> {
     for entry in fs::read_dir(dir).map_err(ForgeError::Io)? {
         let entry = entry.map_err(ForgeError::Io)?;
-        let path  = entry.path();
+        let path = entry.path();
         if path.is_dir() {
             collect_yaml_recursive(&path, out)?;
         } else if matches!(
@@ -120,7 +119,9 @@ pub fn ingest_corpus(data_dir: &Path) -> Result<FeastRegistry, ForgeError> {
         let ordo_dirs = sorted_subdirs(&ordines)?;
         for ordo_path in ordo_dirs {
             // Ignorer i18n/ qui n'est pas un scope liturgique
-            if dir_name(&ordo_path) == "i18n" { continue; }
+            if dir_name(&ordo_path) == "i18n" {
+                continue;
+            }
             let ordo = dir_name(&ordo_path);
             ingest_scope_dir(&ordo_path, Scope::Diocesan(ordo), &mut registry, false)?;
         }
@@ -149,7 +150,7 @@ pub fn ingest_corpus(data_dir: &Path) -> Result<FeastRegistry, ForgeError> {
 /// `rite_root` : chemin vers `corpus/{rite}/`.
 /// `scope_path` : chemin relatif du scope, ex: `"universale"`, `"nationalia/FR"`.
 pub fn ingest_corpus_scoped(
-    rite_root:  &Path,
+    rite_root: &Path,
     scope_path: &str,
 ) -> Result<FeastRegistry, ForgeError> {
     let mut registry = FeastRegistry::new();
@@ -190,8 +191,8 @@ fn scope_from_path(scope_path: &str) -> Scope {
     match parts.as_slice() {
         [level, id] => match *level {
             "nationalia" | "continentalia" => Scope::National(id.to_string()),
-            "dioecesana" | "ordines"       => Scope::Diocesan(id.to_string()),
-            _                              => Scope::Universal,
+            "dioecesana" | "ordines" => Scope::Diocesan(id.to_string()),
+            _ => Scope::Universal,
         },
         _ => Scope::Universal,
     }
@@ -227,9 +228,10 @@ fn validate_collides_targets(registry: &FeastRegistry) -> Result<(), ForgeError>
                 for c in &transfer.collides {
                     if !registry.contains(c.as_str()) {
                         return Err(ParseError::UnknownCollidesTarget {
-                            slug:     feast.slug.clone(),
+                            slug: feast.slug.clone(),
                             collides: c.clone(),
-                        }.into());
+                        }
+                        .into());
                     }
                 }
             }

@@ -1,6 +1,6 @@
 use liturgical_calendar_core::{
     entry::TimelineEntry,
-    ffi::{kal_read_entry, kal_validate_header, KAL_ENGINE_OK},
+    ffi::{KAL_ENGINE_OK, kal_read_entry, kal_validate_header},
 };
 use liturgical_calendar_forge::forge_full_range;
 use std::{ptr::null_mut, sync::OnceLock};
@@ -37,7 +37,10 @@ fn is_leap_year(year: i32) -> bool {
 unsafe fn read_entry(kald: &[u8], year: u16, doy: u16) -> TimelineEntry {
     let mut e = TimelineEntry::zeroed();
     let rc = unsafe { kal_read_entry(kald.as_ptr(), kald.len(), year, doy, &mut e) };
-    assert_eq!(rc, KAL_ENGINE_OK, "kal_read_entry({year}, {doy}) KO : code={rc}");
+    assert_eq!(
+        rc, KAL_ENGINE_OK,
+        "kal_read_entry({year}, {doy}) KO : code={rc}"
+    );
     e
 }
 
@@ -68,12 +71,12 @@ fn full_range_padding_entries_correct() {
         let is_leap = is_leap_year(year as i32);
         let e = unsafe { read_entry(kald, year, 59) };
 
-            if is_leap {
-                assert!(
-                    e.liturgical_week > 0,
-                    "year {year} (bissextile) : doy=59 doit porter liturgical_week > 0 (primitives temporelles)"
-                );
-            } else {
+        if is_leap {
+            assert!(
+                e.liturgical_week > 0,
+                "year {year} (bissextile) : doy=59 doit porter liturgical_week > 0 (primitives temporelles)"
+            );
+        } else {
             // Padding pur — zéro absolu sur tous les champs.
             assert_eq!(
                 e.primary_index, 0,
@@ -84,7 +87,8 @@ fn full_range_padding_entries_correct() {
                 "year {year} (non-bissextile) : doy=59 = padding pur, liturgical_week doit être 0",
             );
             assert_eq!(
-                e.occurrence_flags & 0b1111_1100, 0,
+                e.occurrence_flags & 0b1111_1100,
+                0,
                 "year {year} (non-bissextile) : doy=59 = padding pur, bits period/reserved doivent être nuls",
             );
         }
@@ -131,7 +135,7 @@ fn full_range_iustini_june1_2025() {
 /// Masque : 0x000F (bits [3:0] = Precedence), valeur attendue : 0 (Triduum).
 #[test]
 fn full_range_triduum_2025_exactly_3_entries() {
-    use liturgical_calendar_core::ffi::{kal_scan_flags, KAL_ERR_BUF_TOO_SMALL};
+    use liturgical_calendar_core::ffi::{KAL_ERR_BUF_TOO_SMALL, kal_scan_flags};
 
     let kald = &kalds().0;
     let mut indices = [0u32; 10];
@@ -139,18 +143,27 @@ fn full_range_triduum_2025_exactly_3_entries() {
 
     let rc = unsafe {
         kal_scan_flags(
-            kald.as_ptr(), kald.len(),
-            2025, 2025,   // year_from, year_to
-            0x000F,       // flag_mask  : bits [3:0] = Precedence
-            0,            // flag_value : Precedence 0 (Triduum)
-            indices.as_mut_ptr(), 10,
+            kald.as_ptr(),
+            kald.len(),
+            2025,
+            2025,   // year_from, year_to
+            0x000F, // flag_mask  : bits [3:0] = Precedence
+            0,      // flag_value : Precedence 0 (Triduum)
+            indices.as_mut_ptr(),
+            10,
             &mut count,
         )
     };
 
-    assert_ne!(rc, KAL_ERR_BUF_TOO_SMALL, "buffer trop petit — augmenter la capacité");
+    assert_ne!(
+        rc, KAL_ERR_BUF_TOO_SMALL,
+        "buffer trop petit — augmenter la capacité"
+    );
     assert_eq!(rc, KAL_ENGINE_OK);
-    assert_eq!(count, 3, "Triduum pascal 2025 = exactement 3 jours Precedence-0");
+    assert_eq!(
+        count, 3,
+        "Triduum pascal 2025 = exactement 3 jours Precedence-0"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -165,7 +178,10 @@ fn full_range_petri_et_pauli_transfer_easter_april22() {
 
     // Référence : 1970, Pâques ≠ 22 avril → Ss. Petri et Pauli en doy=180 sans conflit.
     let e_ref = unsafe { read_entry(kald, 1970, 180) };
-    assert_ne!(e_ref.primary_index, 0, "Référence 1970 doy=180 : Padding Entry inattendu");
+    assert_ne!(
+        e_ref.primary_index, 0,
+        "Référence 1970 doy=180 : Padding Entry inattendu"
+    );
     let petri_et_pauli_ridx = e_ref.primary_index;
 
     for year in [1973u16, 1984] {
@@ -212,7 +228,8 @@ fn full_range_fabiani_et_sebastiani_same_doy() {
         let mut sec_indices = vec![0u16; e.secondary_count as usize];
         let rc = unsafe {
             kal_read_secondary(
-                kald.as_ptr(), kald.len(),
+                kald.as_ptr(),
+                kald.len(),
                 e.secondary_offset,
                 e.secondary_count,
                 sec_indices.as_mut_ptr(),
@@ -236,7 +253,10 @@ fn full_range_fabiani_et_sebastiani_same_doy() {
 fn full_range_dominica_ii_2026_segment_i() {
     let kald = &kalds().0;
     let e = unsafe { read_entry(kald, 2026, 17) };
-    assert_ne!(e.primary_index, 0, "Dominica II 2026 absente du .kald (doy=17)");
+    assert_ne!(
+        e.primary_index, 0,
+        "Dominica II 2026 absente du .kald (doy=17)"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -249,7 +269,10 @@ fn full_range_ash_wednesday_early_easter_2026() {
     let kald = &kalds().0;
 
     let e48 = unsafe { read_entry(kald, 2026, 48) };
-    assert_ne!(e48.primary_index, 0, "Feria IV Cinerum absente du DOY 48 en 2026");
+    assert_ne!(
+        e48.primary_index, 0,
+        "Feria IV Cinerum absente du DOY 48 en 2026"
+    );
 
     let e49 = unsafe { read_entry(kald, 2026, 49) };
     assert_eq!(e49.primary_index, 0, "DOY 49 doit être vide en 2026");
@@ -269,18 +292,24 @@ fn full_range_ash_wednesday_early_easter_2026() {
 fn full_range_immaculati_cordis_flags_post_1996() {
     use liturgical_calendar_core::ffi::{kal_read_feast, kal_read_secondary};
 
-    const DOY:  u16 = 164;   // 13 juin
+    const DOY: u16 = 164; // 13 juin
     const YEAR: u16 = 2026;
     const FEAST_ID_IMMACULATI: u16 = 0x003d;
-    const PREC_OBL_GEN:        u8  = 9;     // MemoriaeObligatoriaGenerales
+    const PREC_OBL_GEN: u8 = 9; // MemoriaeObligatoriaGenerales
 
     let kald = &kalds().0;
-    let ptr  = kald.as_ptr();
-    let len  = kald.len();
+    let ptr = kald.as_ptr();
+    let len = kald.len();
 
     let entry = unsafe { read_entry(kald, YEAR, DOY) };
-    assert!(!entry.is_padding(), "DOY {DOY} {YEAR} : Padding Entry inattendu");
-    assert!(entry.secondary_count >= 1, "aucune secondaire — Immaculati manquant");
+    assert!(
+        !entry.is_padding(),
+        "DOY {DOY} {YEAR} : Padding Entry inattendu"
+    );
+    assert!(
+        entry.secondary_count >= 1,
+        "aucune secondaire — Immaculati manquant"
+    );
 
     // Chercher Immaculati Cordis parmi primary + secondaries.
     let mut immaculati_flags: Option<u16> = None;
@@ -296,8 +325,14 @@ fn full_range_immaculati_cordis_flags_post_1996() {
     if immaculati_flags.is_none() {
         let mut sec = vec![0u16; entry.secondary_count as usize];
         unsafe {
-            kal_read_secondary(ptr, len, entry.secondary_offset,
-                entry.secondary_count, sec.as_mut_ptr(), entry.secondary_count);
+            kal_read_secondary(
+                ptr,
+                len,
+                entry.secondary_offset,
+                entry.secondary_count,
+                sec.as_mut_ptr(),
+                entry.secondary_count,
+            );
         };
         for &ridx in &sec {
             let mut sf = liturgical_calendar_core::entry::FeastEntry::zeroed();

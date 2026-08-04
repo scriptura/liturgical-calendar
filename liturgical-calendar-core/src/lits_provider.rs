@@ -55,7 +55,7 @@ pub enum LitsError {
 #[derive(Debug, PartialEq, Eq)]
 pub struct LitsEntry<'a> {
     /// Titre officiel de la fête pour la langue et l'année demandées.
-    pub label:      &'a str,
+    pub label: &'a str,
     /// Précision liturgique ou titre alternatif — `None` si absent du corpus.
     pub annotation: Option<&'a str>,
 }
@@ -65,10 +65,10 @@ pub struct LitsEntry<'a> {
 /// Zéro allocation. Zéro copie. Zéro état interne.
 /// Le buffer doit rester valide pour toute la durée de vie `'a`.
 pub struct LitsProvider<'a> {
-    data:        &'a [u8],
+    data: &'a [u8],
     entry_count: u32,
     pool_offset: u32,
-    pool_size:   u32,
+    pool_size: u32,
 }
 
 impl<'a> LitsProvider<'a> {
@@ -92,7 +92,7 @@ impl<'a> LitsProvider<'a> {
 
         let entry_count = u32::from_le_bytes([data[20], data[21], data[22], data[23]]);
         let pool_offset = u32::from_le_bytes([data[24], data[25], data[26], data[27]]);
-        let pool_size   = u32::from_le_bytes([data[28], data[29], data[30], data[31]]);
+        let pool_size = u32::from_le_bytes([data[28], data[29], data[30], data[31]]);
 
         // pool_offset == 32 + entry_count × 14 (invariant spec §9.2)
         let expected_pool_offset: u64 = 32u64 + (entry_count as u64) * (ENTRY_STRIDE as u64);
@@ -102,7 +102,12 @@ impl<'a> LitsProvider<'a> {
             return Err(LitsError::CorruptLayout);
         }
 
-        Ok(Self { data, entry_count, pool_offset, pool_size })
+        Ok(Self {
+            data,
+            entry_count,
+            pool_offset,
+            pool_size,
+        })
     }
 
     /// Retourne `kald_build_id` (bytes 12–19 du header).
@@ -134,7 +139,11 @@ impl<'a> LitsProvider<'a> {
             while lo < hi {
                 let mid = lo + (hi - lo) / 2;
                 let fid = self.read_feast_id(mid);
-                if fid < feast_id { lo = mid + 1; } else { hi = mid; }
+                if fid < feast_id {
+                    lo = mid + 1;
+                } else {
+                    hi = mid;
+                }
             }
             lo
         };
@@ -146,16 +155,18 @@ impl<'a> LitsProvider<'a> {
         // ── Scan linéaire des tranches [from, to] ────────────────────────────
         let mut idx = first;
         while idx < n {
-            if self.read_feast_id(idx) != feast_id { break; }
+            if self.read_feast_id(idx) != feast_id {
+                break;
+            }
 
             let from = self.read_from(idx);
-            let to   = self.read_to(idx);
+            let to = self.read_to(idx);
 
             if year >= from && year <= to {
-                let label_offset      = self.read_label_offset(idx);
+                let label_offset = self.read_label_offset(idx);
                 let annotation_offset = self.read_annotation_offset(idx);
 
-                let label      = self.read_string(label_offset)?;
+                let label = self.read_string(label_offset)?;
                 let annotation = if annotation_offset == ANNOTATION_ABSENT {
                     None
                 } else {
@@ -199,13 +210,23 @@ impl<'a> LitsProvider<'a> {
     #[inline]
     fn read_label_offset(&self, idx: usize) -> u32 {
         let b = self.entry_base(idx) + 6;
-        u32::from_le_bytes([self.data[b], self.data[b+1], self.data[b+2], self.data[b+3]])
+        u32::from_le_bytes([
+            self.data[b],
+            self.data[b + 1],
+            self.data[b + 2],
+            self.data[b + 3],
+        ])
     }
 
     #[inline]
     fn read_annotation_offset(&self, idx: usize) -> u32 {
         let b = self.entry_base(idx) + 10;
-        u32::from_le_bytes([self.data[b], self.data[b+1], self.data[b+2], self.data[b+3]])
+        u32::from_le_bytes([
+            self.data[b],
+            self.data[b + 1],
+            self.data[b + 2],
+            self.data[b + 3],
+        ])
     }
 
     /// Lit une chaîne UTF-8 null-terminée depuis le String Pool.
@@ -213,15 +234,15 @@ impl<'a> LitsProvider<'a> {
     #[inline]
     fn read_string(&self, str_offset: u32) -> Option<&'a str> {
         let pool_start = self.pool_offset as usize;
-        let pool_end   = pool_start + self.pool_size as usize;
-        let abs_start  = pool_start + str_offset as usize;
+        let pool_end = pool_start + self.pool_size as usize;
+        let abs_start = pool_start + str_offset as usize;
 
         if abs_start >= pool_end {
             return None;
         }
 
         let slice = &self.data[abs_start..pool_end];
-        let len   = slice.iter().position(|&b| b == 0x00)?;
+        let len = slice.iter().position(|&b| b == 0x00)?;
 
         core::str::from_utf8(&slice[..len]).ok()
     }

@@ -1,12 +1,15 @@
-# 📅 Liturgical Calendar
+# Liturgical Calendar
+
+![Architecture: ECS / DOD](https://img.shields.io/badge/Architecture-ECS_%2F_DOD-blue)
+![Pipeline: AOT](https://img.shields.io/badge/Pipeline-AOT-success)
+![Memory: no__std](https://img.shields.io/badge/Memory-no__std-orange)
+![Allocation: zero--alloc](https://img.shields.io/badge/Allocation-zero--alloc-red)
 
 Un moteur de référence haute performance pour le calcul et la consultation du calendrier liturgique catholique (Novus Ordo, 1969–2399).
 
 Ce projet repose sur un changement de paradigme : la donnée liturgique n'est pas traitée comme un algorithme perpétuel, mais comme une **vue matérialisée** d'un état du droit à un instant T.
 
----
-
-## 🚀 Philosophie : Data over Logic
+## Philosophie : Data over Logic
 
 Calculer dynamiquement le calendrier liturgique à l'exécution — dates de Pâques, préséances, transferts de fêtes — entraîne une complexité inutile et des risques d'incohérence entre plateformes. L'intelligence métier est entièrement déportée en amont.
 
@@ -16,9 +19,7 @@ Le système se divise en deux composants asymétriques :
 
 **L'Engine** (`liturgical-calendar-core`) est le runtime ultra-léger intégré dans vos applications. Il ne contient aucune règle liturgique — il lit la table pré-calculée. Un accès à n'importe quel jour de n'importe quelle année se fait en O(1), par simple calcul d'offset.
 
----
-
-## ⚡ Garanties Techniques
+## Garanties Techniques
 
 - **Zéro calcul à l'exécution** — L'Engine accède à `(année, doy)` par offset arithmétique dans un buffer contigu. Aucun branchement conditionnel lié aux années bissextiles ou aux fêtes mobiles.
 - **Artefacts comme source de vérité** — Une canonisation, une modification de préséance ou une nouvelle règle de transfert se traduit par une mise à jour YAML + une recompilation Forge. L'Engine consomme le nouveau `.kald` sans modification ni recompilation.
@@ -27,9 +28,7 @@ Le système se divise en deux composants asymétriques :
 - **Validation AOT exhaustive** — Tout le corpus YAML est validé formellement à la compilation. Cycles de dépendances, collisions de préséance, incohérences de dates : toute erreur de configuration est fatale à la Forge. Aucune ne peut atteindre le runtime.
 - **Déterminisme garanti** — Build identique sur toute machine. Les `feast_registry.lock` et `variant_registry.lock` versionnés garantissent la stabilité des identifiants numériques entre compilations.
 
----
-
-## 📐 Architecture des Artefacts
+## Architecture des Artefacts
 
 ```
 .kald  —  Header 80 octets (magic, version, SHA-256, layout_discriminant, registry_count…)
@@ -61,9 +60,7 @@ _reserved        u16   —  0x0000
 
 Les invariants d'une fête (couleur, nature, préséance) ne sont stockés qu'une seule fois dans le Feast Registry, indépendamment du nombre d'années où elle est célébrée.
 
----
-
-## 🗂️ Organisation du Corpus
+## Organisation du Corpus
 
 La source de vérité est un corpus de fichiers YAML organisé par rite et juridiction :
 
@@ -85,9 +82,7 @@ corpus/
 
 Chaque fête = un fichier YAML. Le nom du fichier (sans extension) **est** le slug — jamais déclaré dans le corps du YAML. Aucun champ textuel dans le corpus : les labels sont externalisés dans les dictionnaires `i18n/`.
 
----
-
-## 🛠️ Compilation et Lecture
+## Compilation et Lecture
 
 ### Prérequis
 
@@ -159,9 +154,7 @@ rc = kal_read_feast(kald_data, kald_len, entry.primary_index, &feast);
 uint8_t precedence = feast.flags & 0x000F;
 ```
 
----
-
-## 📦 Structure du Projet
+## Structure du Projet
 
 ```
 liturgical-calendar/
@@ -189,16 +182,12 @@ liturgical-calendar/
 └── artifacts/                    ← Artefacts compilés (ignorés par Git)
 ```
 
----
-
-## 📖 Documentation
+## Documentation
 
 - [`docs/liturgical-scheme.md`](docs/liturgical-scheme.md) — Contrat de données YAML (format corpus + i18n)
 - [`docs/kal-forge-guide.md`](docs/kal-forge-guide.md) — Mode d'emploi `kal-forge` et `kal-read`
 - [`docs/adr/`](docs/adr/) — Architecture Decision Records
 
----
-
-## ⏱️ Couverture Temporelle
+## Couverture Temporelle
 
 1969 (réforme du calendrier romain) → 2399. 431 années, 157 746 slots, layout AOT invariant.

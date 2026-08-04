@@ -3,10 +3,7 @@
 use core::ptr::{addr_of, addr_of_mut};
 
 use liturgical_calendar_core::{
-    ffi::{
-        kal_read_entry, kal_read_feast, kal_read_secondary,
-        kal_validate_header, KAL_ENGINE_OK,
-    },
+    ffi::{KAL_ENGINE_OK, kal_read_entry, kal_read_feast, kal_read_secondary, kal_validate_header},
     lits_provider::LitsProvider,
 };
 
@@ -21,35 +18,35 @@ fn panic(_info: &core::panic::PanicInfo) -> ! {
 // 431 ans × 366 slots × 8 octets ≈ 1.26 MB Timeline.
 // Registry : ~4000 fêtes × 4 octets ≈ 16 KB.
 
-const KALD_CAP:      usize = 2 * 1024 * 1024;
-const LITS_CAP:      usize = 512 * 1024;
+const KALD_CAP: usize = 2 * 1024 * 1024;
+const LITS_CAP: usize = 512 * 1024;
 const SECONDARY_CAP: usize = 32;
 
 // ── Buffers BSS ───────────────────────────────────────────────────────────────
 
-static mut KALD_BUF:      [u8;  KALD_CAP]      = [0u8; KALD_CAP];
-static mut LITS_BUF:      [u8;  LITS_CAP]      = [0u8; LITS_CAP];
-static mut ENTRY_BUF:     [u8;  8]             = [0u8; 8]; // TimelineEntry v6
-static mut FEAST_BUF:     [u8;  4]             = [0u8; 4]; // FeastEntry
+static mut KALD_BUF: [u8; KALD_CAP] = [0u8; KALD_CAP];
+static mut LITS_BUF: [u8; LITS_CAP] = [0u8; LITS_CAP];
+static mut ENTRY_BUF: [u8; 8] = [0u8; 8]; // TimelineEntry v6
+static mut FEAST_BUF: [u8; 4] = [0u8; 4]; // FeastEntry
 static mut SECONDARY_BUF: [u16; SECONDARY_CAP] = [0u16; SECONDARY_CAP];
 
-static mut KALD_LEN:     u32 = 0;
-static mut LITS_LEN:     u32 = 0;
-static mut BRIDGE_STATE: u8  = 0; // 0=Uninit 1=KaldLoaded 2=Ready
+static mut KALD_LEN: u32 = 0;
+static mut LITS_LEN: u32 = 0;
+static mut BRIDGE_STATE: u8 = 0; // 0=Uninit 1=KaldLoaded 2=Ready
 
 // ── Out-statics label + annotation ────────────────────────────────────────────
 
-static mut LABEL_PTR:      u32 = 0;
-static mut LABEL_LEN:      u32 = 0;
+static mut LABEL_PTR: u32 = 0;
+static mut LABEL_LEN: u32 = 0;
 static mut ANNOTATION_PTR: u32 = 0; // 0 si annotation absente
 static mut ANNOTATION_LEN: u32 = 0;
 
 // ── Codes d'erreur bridge ─────────────────────────────────────────────────────
 
-pub const KAL_ERR_NOT_READY:         i32 = -20;
-pub const KAL_ERR_BUF_OVERFLOW:      i32 = -21;
+pub const KAL_ERR_NOT_READY: i32 = -20;
+pub const KAL_ERR_BUF_OVERFLOW: i32 = -21;
 pub const KAL_ERR_BUILD_ID_MISMATCH: i32 = -22;
-pub const KAL_ERR_LITS_INVALID:      i32 = -23;
+pub const KAL_ERR_LITS_INVALID: i32 = -23;
 
 // ── Helper interne ────────────────────────────────────────────────────────────
 
@@ -98,7 +95,9 @@ unsafe fn resolve_by_id(feast_id: u16, year: u16) -> i32 {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn kal_wasm_alloc_kald(len: u32) -> u32 {
-    if len as usize > KALD_CAP { return 0; }
+    if len as usize > KALD_CAP {
+        return 0;
+    }
     unsafe {
         *addr_of_mut!(KALD_LEN) = len;
         addr_of!(KALD_BUF) as u32
@@ -107,7 +106,9 @@ pub extern "C" fn kal_wasm_alloc_kald(len: u32) -> u32 {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn kal_wasm_alloc_lits(len: u32) -> u32 {
-    if len as usize > LITS_CAP { return 0; }
+    if len as usize > LITS_CAP {
+        return 0;
+    }
     unsafe {
         *addr_of_mut!(LITS_LEN) = len;
         addr_of!(LITS_BUF) as u32
@@ -128,7 +129,9 @@ pub extern "C" fn kal_wasm_commit_kald() -> i32 {
             *addr_of!(KALD_LEN) as usize,
             core::ptr::null_mut(),
         );
-        if rc == KAL_ENGINE_OK { *addr_of_mut!(BRIDGE_STATE) = 1; }
+        if rc == KAL_ENGINE_OK {
+            *addr_of_mut!(BRIDGE_STATE) = 1;
+        }
         rc
     }
 }
@@ -138,8 +141,12 @@ pub extern "C" fn kal_wasm_commit_kald() -> i32 {
 #[unsafe(no_mangle)]
 pub extern "C" fn kal_wasm_commit_lits() -> i32 {
     unsafe {
-        if *addr_of!(BRIDGE_STATE) < 1 { return KAL_ERR_NOT_READY; }
-        if *addr_of!(LITS_LEN) < 20   { return KAL_ERR_LITS_INVALID; }
+        if *addr_of!(BRIDGE_STATE) < 1 {
+            return KAL_ERR_NOT_READY;
+        }
+        if *addr_of!(LITS_LEN) < 20 {
+            return KAL_ERR_LITS_INVALID;
+        }
 
         let kald_cs_ptr = (addr_of!(KALD_BUF) as *const u8).add(36);
         let lits_bi_ptr = (addr_of!(LITS_BUF) as *const u8).add(12);
@@ -154,7 +161,10 @@ pub extern "C" fn kal_wasm_commit_lits() -> i32 {
             *addr_of!(LITS_LEN) as usize,
         );
         match LitsProvider::new(lits_slice) {
-            Ok(_) => { *addr_of_mut!(BRIDGE_STATE) = 2; KAL_ENGINE_OK }
+            Ok(_) => {
+                *addr_of_mut!(BRIDGE_STATE) = 2;
+                KAL_ENGINE_OK
+            }
             Err(_) => KAL_ERR_LITS_INVALID,
         }
     }
@@ -178,7 +188,9 @@ pub extern "C" fn kal_wasm_commit_lits() -> i32 {
 #[unsafe(no_mangle)]
 pub extern "C" fn kal_wasm_read_day(year: u16, doy: u16) -> i32 {
     unsafe {
-        if *addr_of!(BRIDGE_STATE) != 2 { return KAL_ERR_NOT_READY; }
+        if *addr_of!(BRIDGE_STATE) != 2 {
+            return KAL_ERR_NOT_READY;
+        }
         kal_read_entry(
             addr_of!(KALD_BUF) as *const u8,
             *addr_of!(KALD_LEN) as usize,
@@ -198,9 +210,7 @@ pub extern "C" fn kal_wasm_entry_ptr() -> u32 {
 /// `primary_index` de la dernière `TimelineEntry` lue (0 = Padding Entry).
 #[unsafe(no_mangle)]
 pub extern "C" fn kal_wasm_entry_primary_index() -> u16 {
-    unsafe {
-        u16::from_le_bytes([*addr_of!(ENTRY_BUF[0]), *addr_of!(ENTRY_BUF[1])])
-    }
+    unsafe { u16::from_le_bytes([*addr_of!(ENTRY_BUF[0]), *addr_of!(ENTRY_BUF[1])]) }
 }
 
 /// `1` si Padding Entry (primary_index == 0), `0` sinon.
@@ -239,7 +249,9 @@ pub extern "C" fn kal_wasm_entry_occurrence_flags() -> u8 {
 #[unsafe(no_mangle)]
 pub extern "C" fn kal_wasm_read_feast(registry_index: u16) -> i32 {
     unsafe {
-        if *addr_of!(BRIDGE_STATE) != 2 { return KAL_ERR_NOT_READY; }
+        if *addr_of!(BRIDGE_STATE) != 2 {
+            return KAL_ERR_NOT_READY;
+        }
         kal_read_feast(
             addr_of!(KALD_BUF) as *const u8,
             *addr_of!(KALD_LEN) as usize,
@@ -261,7 +273,9 @@ pub extern "C" fn kal_wasm_feast_ptr() -> u32 {
 #[unsafe(no_mangle)]
 pub extern "C" fn kal_wasm_read_secondary(secondary_offset: u16, count: u8) -> i32 {
     unsafe {
-        if *addr_of!(BRIDGE_STATE) != 2 { return KAL_ERR_NOT_READY; }
+        if *addr_of!(BRIDGE_STATE) != 2 {
+            return KAL_ERR_NOT_READY;
+        }
         kal_read_secondary(
             addr_of!(KALD_BUF) as *const u8,
             *addr_of!(KALD_LEN) as usize,
@@ -287,7 +301,9 @@ pub extern "C" fn kal_wasm_secondary_ptr() -> u32 {
 #[unsafe(no_mangle)]
 pub extern "C" fn kal_wasm_get_label(year: u16, doy: u16) -> i32 {
     unsafe {
-        if *addr_of!(BRIDGE_STATE) != 2 { return KAL_ERR_NOT_READY; }
+        if *addr_of!(BRIDGE_STATE) != 2 {
+            return KAL_ERR_NOT_READY;
+        }
 
         let rc = kal_read_entry(
             addr_of!(KALD_BUF) as *const u8,
@@ -296,13 +312,14 @@ pub extern "C" fn kal_wasm_get_label(year: u16, doy: u16) -> i32 {
             doy,
             addr_of_mut!(ENTRY_BUF) as *mut _,
         );
-        if rc != KAL_ENGINE_OK { return rc; }
+        if rc != KAL_ENGINE_OK {
+            return rc;
+        }
 
-        let primary_index = u16::from_le_bytes([
-            *addr_of!(ENTRY_BUF[0]),
-            *addr_of!(ENTRY_BUF[1]),
-        ]);
-        if primary_index == 0 { return 0; }
+        let primary_index = u16::from_le_bytes([*addr_of!(ENTRY_BUF[0]), *addr_of!(ENTRY_BUF[1])]);
+        if primary_index == 0 {
+            return 0;
+        }
 
         let rc2 = kal_read_feast(
             addr_of!(KALD_BUF) as *const u8,
@@ -310,12 +327,11 @@ pub extern "C" fn kal_wasm_get_label(year: u16, doy: u16) -> i32 {
             primary_index,
             addr_of_mut!(FEAST_BUF) as *mut _,
         );
-        if rc2 != KAL_ENGINE_OK { return rc2; }
+        if rc2 != KAL_ENGINE_OK {
+            return rc2;
+        }
 
-        let feast_id = u16::from_le_bytes([
-            *addr_of!(FEAST_BUF[0]),
-            *addr_of!(FEAST_BUF[1]),
-        ]);
+        let feast_id = u16::from_le_bytes([*addr_of!(FEAST_BUF[0]), *addr_of!(FEAST_BUF[1])]);
 
         resolve_by_id(feast_id, year)
     }
@@ -326,16 +342,26 @@ pub extern "C" fn kal_wasm_get_label(year: u16, doy: u16) -> i32 {
 #[unsafe(no_mangle)]
 pub extern "C" fn kal_wasm_get_label_by_id(feast_id: u16, year: u16) -> i32 {
     unsafe {
-        if *addr_of!(BRIDGE_STATE) != 2 { return KAL_ERR_NOT_READY; }
+        if *addr_of!(BRIDGE_STATE) != 2 {
+            return KAL_ERR_NOT_READY;
+        }
         resolve_by_id(feast_id, year)
     }
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn kal_wasm_label_ptr() -> u32      { unsafe { *addr_of!(LABEL_PTR) } }
+pub extern "C" fn kal_wasm_label_ptr() -> u32 {
+    unsafe { *addr_of!(LABEL_PTR) }
+}
 #[unsafe(no_mangle)]
-pub extern "C" fn kal_wasm_label_len() -> u32      { unsafe { *addr_of!(LABEL_LEN) } }
+pub extern "C" fn kal_wasm_label_len() -> u32 {
+    unsafe { *addr_of!(LABEL_LEN) }
+}
 #[unsafe(no_mangle)]
-pub extern "C" fn kal_wasm_annotation_ptr() -> u32 { unsafe { *addr_of!(ANNOTATION_PTR) } }
+pub extern "C" fn kal_wasm_annotation_ptr() -> u32 {
+    unsafe { *addr_of!(ANNOTATION_PTR) }
+}
 #[unsafe(no_mangle)]
-pub extern "C" fn kal_wasm_annotation_len() -> u32 { unsafe { *addr_of!(ANNOTATION_LEN) } }
+pub extern "C" fn kal_wasm_annotation_len() -> u32 {
+    unsafe { *addr_of!(ANNOTATION_LEN) }
+}

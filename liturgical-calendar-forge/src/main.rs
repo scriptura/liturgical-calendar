@@ -2,19 +2,16 @@ use std::path::{Path, PathBuf};
 
 use clap::Parser;
 use liturgical_calendar_forge::{
-    compile,
-    ingestion::ingest_corpus_scoped,
-    variant_lock::VariantRegistryLock,
-    I18nConfig,
+    I18nConfig, compile, ingestion::ingest_corpus_scoped, variant_lock::VariantRegistryLock,
 };
 
 // ── Arguments CLI ─────────────────────────────────────────────────────────────
 
 #[derive(Parser, Debug)]
 #[command(
-    name    = "kal-forge",
+    name = "kal-forge",
     version,
-    about   = "Compile un scope liturgique YAML → .kald (+ .lits optionnel)",
+    about = "Compile un scope liturgique YAML → .kald (+ .lits optionnel)"
 )]
 struct Args {
     /// Rite à compiler.
@@ -56,16 +53,18 @@ fn main() {
 fn run(args: &Args) -> Result<(), liturgical_calendar_forge::ForgeError> {
     let rite_root = args.corpus.join(&args.rite);
 
-    std::fs::create_dir_all(&args.out)
-        .map_err(liturgical_calendar_forge::ForgeError::Io)?;
+    std::fs::create_dir_all(&args.out).map_err(liturgical_calendar_forge::ForgeError::Io)?;
 
     match &args.scope {
         Some(scope) => compile_scope(args, &rite_root, scope),
-        None        => {
+        None => {
             let scopes = discover_scopes(&args.corpus, &args.rite, args.include_drafts)
                 .map_err(liturgical_calendar_forge::ForgeError::Io)?;
             if scopes.is_empty() {
-                eprintln!("[kal-forge] aucun scope trouvé dans {}", rite_root.display());
+                eprintln!(
+                    "[kal-forge] aucun scope trouvé dans {}",
+                    rite_root.display()
+                );
                 return Ok(());
             }
             for scope_key in &scopes {
@@ -83,9 +82,9 @@ fn run(args: &Args) -> Result<(), liturgical_calendar_forge::ForgeError> {
 }
 
 fn compile_scope(
-    args:      &Args,
+    args: &Args,
     rite_root: &Path,
-    scope:     &str,
+    scope: &str,
 ) -> Result<(), liturgical_calendar_forge::ForgeError> {
     // ── Résolution des chemins ────────────────────────────────────────────────
     let corpus_root = rite_root.join(scope);
@@ -108,7 +107,7 @@ fn compile_scope(
     let lock_path = rite_root.join("variant_registry.lock");
     let mut variant_lock = VariantRegistryLock::load(&lock_path)?;
 
-    let scope_key  = format!("{}/{}", args.rite, scope);
+    let scope_key = format!("{}/{}", args.rite, scope);
     let variant_id = variant_lock.allocate(&scope_key)?;
     variant_lock.save(&lock_path)?;
 
@@ -127,7 +126,7 @@ fn compile_scope(
         Some(I18nConfig {
             i18n_root: rite_root,
             scope_path: Some(scope),
-            lits_dir:  args.out.as_path(),
+            lits_dir: args.out.as_path(),
         })
     } else {
         None
@@ -142,13 +141,14 @@ fn compile_scope(
 
     // ── Renommage des .lits : {lang}.lits → {flat_name}_{lang}.lits ──────────
     if args.i18n {
-        for entry in std::fs::read_dir(&args.out)
-            .map_err(liturgical_calendar_forge::ForgeError::Io)?
+        for entry in
+            std::fs::read_dir(&args.out).map_err(liturgical_calendar_forge::ForgeError::Io)?
         {
             let entry = entry.map_err(liturgical_calendar_forge::ForgeError::Io)?;
-            let path  = entry.path();
+            let path = entry.path();
             if path.extension().map(|e| e == "lits").unwrap_or(false) {
-                let lang = path.file_stem()
+                let lang = path
+                    .file_stem()
                     .and_then(|s| s.to_str())
                     .unwrap_or_default();
                 if !lang.contains('_') {
@@ -176,8 +176,8 @@ fn compile_scope(
 /// Exclut les scopes marqués `DRAFT` sauf si `include_drafts = true`.
 /// Résultat trié lexicographiquement — déterminisme de compilation.
 fn discover_scopes(
-    corpus:         &Path,
-    rite:           &str,
+    corpus: &Path,
+    rite: &str,
     include_drafts: bool,
 ) -> std::io::Result<Vec<String>> {
     let rite_dir = corpus.join(rite);
@@ -185,37 +185,46 @@ fn discover_scopes(
 
     for entry in std::fs::read_dir(&rite_dir)? {
         let entry = entry?;
-        let path  = entry.path();
+        let path = entry.path();
 
-        if !path.is_dir() { continue; }
+        if !path.is_dir() {
+            continue;
+        }
 
         let name = match path.file_name().and_then(|n| n.to_str()) {
             Some(n) => n.to_owned(),
-            None    => continue,
+            None => continue,
         };
 
         // Exclure les fichiers de métadonnées
-        if name.ends_with(".lock") { continue; }
+        if name.ends_with(".lock") {
+            continue;
+        }
 
-        if path.join("DRAFT").exists() && !include_drafts { continue; }
+        if path.join("DRAFT").exists() && !include_drafts {
+            continue;
+        }
 
         // Vérifier si ce répertoire contient directement des données corpus
         // (sanctorale/ ou temporale/) — scope plat.
-        let has_corpus = path.join("sanctorale").exists()
-            || path.join("temporale").exists();
+        let has_corpus = path.join("sanctorale").exists() || path.join("temporale").exists();
 
         if has_corpus {
             scopes.push(format!("{rite}/{name}"));
         } else {
             // Scope conteneur (ex: nationalia/, continentalia/) — descendre d'un niveau.
             for sub in std::fs::read_dir(&path)? {
-                let sub  = sub?;
+                let sub = sub?;
                 let spath = sub.path();
-                if !spath.is_dir() { continue; }
-                if spath.join("DRAFT").exists() && !include_drafts { continue; }
+                if !spath.is_dir() {
+                    continue;
+                }
+                if spath.join("DRAFT").exists() && !include_drafts {
+                    continue;
+                }
                 let subname = match spath.file_name().and_then(|n| n.to_str()) {
                     Some(n) => n.to_owned(),
-                    None    => continue,
+                    None => continue,
                 };
                 scopes.push(format!("{rite}/{name}/{subname}"));
             }

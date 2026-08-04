@@ -17,10 +17,10 @@ pub mod entry;
 pub mod ffi;
 /// Structure `Header` v5 et validation du fichier `.kald`.
 pub mod header;
-/// Types de domaine canoniques : `Precedence`, `Nature`, `Color`, `LiturgicalPeriod`.
-pub mod types;
 /// Projecteur zero-copy sur un buffer `.lits`.
 pub mod lits_provider;
+/// Types de domaine canoniques : `Precedence`, `Nature`, `Color`, `LiturgicalPeriod`.
+pub mod types;
 
 // ── Types principaux ─────────────────────────────────────────────────────────
 
@@ -31,26 +31,14 @@ pub use types::{Color, DomainError, LiturgicalPeriod, Nature, Precedence};
 // ── Surface FFI ──────────────────────────────────────────────────────────────
 
 pub use ffi::{
-    kal_read_entry,
-    kal_read_feast,
-    kal_read_secondary,
-    kal_scan_flags,
-    kal_validate_header,
+    kal_read_entry, kal_read_feast, kal_read_secondary, kal_scan_flags, kal_validate_header,
     kal_validate_header_fast,
 };
 
 // ── Codes de retour — ABI C ──────────────────────────────────────────────────
 
 pub use ffi::{
-    KAL_ENGINE_OK,
-    KAL_ERR_BUF_TOO_SMALL,
-    KAL_ERR_CHECKSUM,
-    KAL_ERR_FILE_SIZE,
-    KAL_ERR_INDEX_OOB,
-    KAL_ERR_MAGIC,
-    KAL_ERR_NULL_PTR,
-    KAL_ERR_POOL_OOB,
-    KAL_ERR_RESERVED,
-    KAL_ERR_SCHEMA,
+    KAL_ENGINE_OK, KAL_ERR_BUF_TOO_SMALL, KAL_ERR_CHECKSUM, KAL_ERR_FILE_SIZE, KAL_ERR_INDEX_OOB,
+    KAL_ERR_MAGIC, KAL_ERR_NULL_PTR, KAL_ERR_POOL_OOB, KAL_ERR_RESERVED, KAL_ERR_SCHEMA,
     KAL_ERR_VERSION,
 };
