@@ -1,9 +1,9 @@
 # Liturgical Calendar
 
-![Architecture: ECS / DOD](https://img.shields.io/badge/Architecture-ECS_%2F_DOD-blue&style=flat-square)
-![Pipeline: AOT](https://img.shields.io/badge/Pipeline-AOT-success&style=flat-square)
-![Memory: no__std](https://img.shields.io/badge/Memory-no__std-orange&style=flat-square)
-![Allocation: zero--alloc](https://img.shields.io/badge/Allocation-zero--alloc-red&style=flat-square)
+![Architecture: ECS / DOD](https://img.shields.io/badge/Architecture-ECS_%2F_DOD-blue?style=flat-square)
+![Pipeline: AOT](https://img.shields.io/badge/Pipeline-AOT-success?style=flat-square)
+![Memory: no__std](https://img.shields.io/badge/Memory-no__std-orange?style=flat-square)
+![Allocation: zero--alloc](https://img.shields.io/badge/Allocation-zero--alloc-red?style=flat-square)
 
 Un moteur de référence haute performance pour le calcul et la consultation du calendrier liturgique catholique (Novus Ordo, 1969–2399).
 
