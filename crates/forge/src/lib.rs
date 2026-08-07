@@ -187,7 +187,7 @@ pub fn forge_full_range(_range: std::ops::RangeInclusive<u16>) -> Result<Vec<u8>
     static LOCK_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     let corpus_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../corpus/romanus")
+        .join("../../corpus/romanus")
         .canonicalize()
         .map_err(ForgeError::Io)?;
 

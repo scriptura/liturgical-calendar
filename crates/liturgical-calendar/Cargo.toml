@@ -1,6 +1,6 @@
 [package]
 name = "liturgical-calendar"
-version = "0.2.4"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.97.0"
 description = "Liturgical calendar engine for the Catholic Novus Ordo — runtime facade"
@@ -11,4 +11,4 @@ keywords = ["liturgical", "calendar", "catholic", "engine", "compiler"]
 categories = ["data-structures", "compilers", "command-line-utilities"]
 
 [dependencies]
-liturgical-calendar-core = { version = "0.2.1", path = "../liturgical-calendar-core" }
+liturgical-calendar-core.workspace = true

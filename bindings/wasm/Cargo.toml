@@ -1,6 +1,6 @@
 [package]
 name = "liturgical-calendar-wasm"
-version = "0.2.4"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.97.0"
 description = "WASM bindings for the liturgical-calendar engine. Provides a zero-copy, no_std interface to query the Roman Catholic liturgical calendar (1969–2399) from .kald and .lits binary files, compiled to WebAssembly."
@@ -14,4 +14,4 @@ categories = ["wasm"]
 crate-type = ["cdylib"]
 
 [dependencies]
-liturgical-calendar-core = { version = "0.2.1", path = "../../liturgical-calendar-core", default-features = false }
+liturgical-calendar-core.workspace = true

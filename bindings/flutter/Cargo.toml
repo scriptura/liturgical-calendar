@@ -1,6 +1,6 @@
 [package]
 name = "liturgical-calendar-flutter"
-version = "0.2.4"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.97.0"
 description = "Flutter bindings for the Liturgical Calendar library, providing liturgical computations for mobile and desktop applications."
@@ -14,4 +14,4 @@ categories = ["api-bindings"]
 crate-type = ["cdylib"]
 
 [dependencies]
-liturgical-calendar-core = { version = "0.2.1", path = "../../liturgical-calendar-core" }
+liturgical-calendar-core.workspace = true

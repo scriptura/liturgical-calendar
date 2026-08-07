@@ -1,17 +1,12 @@
 [workspace]
-members = [
-    "liturgical-calendar",
-    "liturgical-calendar-core",
-    "liturgical-calendar-forge",
-    "crates/liturgical-calendar-wasm",
-    "crates/liturgical-calendar-flutter",
-]
-default-members = [
-    "liturgical-calendar",
-    "liturgical-calendar-core",
-    "liturgical-calendar-forge",
-]
+members = ["crates/*", "bindings/*"]
+default-members = ["crates/core", "crates/forge", "crates/liturgical-calendar"]
 resolver = "2"
+
+[workspace.dependencies]
+liturgical-calendar-core = { version = "0.3.0", path = "crates/core" }
+liturgical-calendar-forge = { version = "0.3.0", path = "crates/forge" }
+liturgical-calendar = { version = "0.3.0", path = "crates/liturgical-calendar" }
 
 [profile.release]
 panic = "abort"
