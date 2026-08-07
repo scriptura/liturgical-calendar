@@ -1,8 +1,6 @@
 use std::fmt;
 
-// ---------------------------------------------------------------------------
 // ParseError — violations détectées fichier par fichier
-// ---------------------------------------------------------------------------
 
 #[derive(Debug)]
 pub enum ParseError {
@@ -52,11 +50,11 @@ pub enum ParseError {
         from: u16,
         collides: String,
     },
-    /// V-T4 — offset direct == 0 (u32, valeur invalide)
-    TransferOffsetNotPositive {
+    /// V-T4 — offset direct == 0 (valeur invalide)
+    TransferOffsetZero {
         slug: String,
         collides: String,
-        offset: u32,
+        offset: i32,
     },
     /// V-T5 — anchor mobile de transfer n'est pas une ancre primitive
     TransferMobileInvalidAnchor {
@@ -87,9 +85,7 @@ pub enum ParseError {
     },
 }
 
-// ---------------------------------------------------------------------------
 // RegistryError — violations de cohérence globale
-// ---------------------------------------------------------------------------
 
 #[derive(Debug)]
 pub enum RegistryError {
@@ -109,9 +105,7 @@ pub enum RegistryError {
     TemporalOverlap,
 }
 
-// ---------------------------------------------------------------------------
 // ForgeError — enveloppe top-level
-// ---------------------------------------------------------------------------
 
 #[derive(Debug)]
 pub enum ForgeError {
@@ -219,6 +213,12 @@ pub enum ForgeError {
     /// Validation post-écriture `kal_validate_header` échouée.
     KaldValidationFailed {
         code: i32,
+    },
+    /// Un transfert rétrograde ou prévisionnel pointe en dehors du calendrier [0, 365].
+    TargetOutOfRange {
+        slug: String,
+        doy: i32,
+        year: u16,
     },
 }
 

@@ -21,9 +21,7 @@ use crate::registry::FeastRegistry;
 
 pub type FeastID = u16;
 
-// ---------------------------------------------------------------------------
 // ResolvedLabel
-// ---------------------------------------------------------------------------
 
 /// Label et annotation résolus pour un couple `(slug, from)` dans une langue.
 /// `annotation = None` → `annotation_offset = 0xFFFF_FFFF` dans le `.lits`.
@@ -33,9 +31,7 @@ pub struct ResolvedLabel {
     pub annotation: Option<String>,
 }
 
-// ---------------------------------------------------------------------------
 // DictStore
-// ---------------------------------------------------------------------------
 //
 // Clé   : (lang, slug, from)
 // Valeur : ResolvedLabel
@@ -86,9 +82,7 @@ impl Default for DictStore {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Structs de désérialisation YAML i18n
-// ---------------------------------------------------------------------------
 //
 // Format attendu :
 //   version: 1
@@ -116,9 +110,7 @@ struct YamlI18nEntry {
     annotation: Option<String>,
 }
 
-// ---------------------------------------------------------------------------
 // parse_dict_file
-// ---------------------------------------------------------------------------
 
 pub fn parse_dict_file(
     path: &Path,
@@ -143,20 +135,17 @@ pub fn parse_dict_file(
     Ok(())
 }
 
-// ---------------------------------------------------------------------------
-// discover_and_load_i18n
-// ---------------------------------------------------------------------------
-//
-// Traverse la même chaîne de scopes qu'`ingest_corpus_scoped` :
-//   - scope_path = None        → tout le rite (universale + tous les sous-scopes)
-//   - scope_path = "universale" → universale uniquement
-//   - scope_path = "nationalia/FR" → universale + nationalia/FR
-//
-// Pour chaque scope_root, scanne `{scope}/i18n/{lang}/{slug}.yaml`.
-// Les scopes plus spécifiques écrasent les universels (last-write-wins).
-//
-// `rite_root` : chemin vers `corpus/{rite}/`.
-
+/// discover_and_load_i18n
+///
+/// Traverse la même chaîne de scopes qu'`ingest_corpus_scoped` :
+///   - scope_path = None        → tout le rite (universale + tous les sous-scopes)
+///   - scope_path = "universale" → universale uniquement
+///   - scope_path = "nationalia/FR" → universale + nationalia/FR
+///
+/// Pour chaque scope_root, scanne `{scope}/i18n/{lang}/{slug}.yaml`.
+/// Les scopes plus spécifiques écrasent les universels (last-write-wins).
+///
+/// `rite_root` : chemin vers `corpus/{rite}/`.
 pub fn discover_and_load_i18n(
     rite_root: &Path,
     scope_path: Option<&str>,
@@ -280,9 +269,7 @@ fn scan_i18n_root(i18n_root: &Path, store: &mut DictStore) -> Result<Vec<String>
     Ok(langs)
 }
 
-// ---------------------------------------------------------------------------
 // remap_default_from_keys
-// ---------------------------------------------------------------------------
 
 /// Remappage post-ingestion : corrige les clés `from=1969` produites par défaut
 /// quand le slug démarre après 1969 et n'a qu'une seule entrée history.
@@ -308,9 +295,7 @@ pub fn remap_default_from_keys(store: &mut DictStore, registry: &FeastRegistry) 
     }
 }
 
-// ---------------------------------------------------------------------------
 // propagate_labels
-// ---------------------------------------------------------------------------
 
 /// Pour chaque (lang, slug), propage le label de la tranche précédente
 /// vers les tranches suivantes qui n'ont pas de label dans le store.
@@ -359,9 +344,7 @@ pub fn propagate_labels(store: &mut DictStore, registry: &FeastRegistry) {
     }
 }
 
-// ---------------------------------------------------------------------------
 // validate_label — V-I3
-// ---------------------------------------------------------------------------
 
 /// Valide un label brut extrait du DictStore.
 /// Retourne `Some(reason)` si le label est invalide, `None` si OK.
@@ -387,9 +370,7 @@ fn validate_label(label: &str) -> Option<&'static str> {
     None
 }
 
-// ---------------------------------------------------------------------------
 // validate_i18n — V-I1, V-I2, V-I3
-// ---------------------------------------------------------------------------
 
 pub fn validate_i18n(registry: &FeastRegistry, store: &DictStore) -> Result<(), ForgeError> {
     // V-I1 — chaque (slug, from) du registry doit avoir un label latin.
@@ -448,9 +429,7 @@ pub fn validate_i18n(registry: &FeastRegistry, store: &DictStore) -> Result<(), 
     Ok(())
 }
 
-// ---------------------------------------------------------------------------
 // resolve_label — fallback latin AOT
-// ---------------------------------------------------------------------------
 
 /// Retourne le `ResolvedLabel` pour `(slug, from, lang)`.
 /// Si `lang` n'a pas d'entrée, retourne le label latin.
@@ -467,9 +446,7 @@ pub fn resolve_label<'a>(
         .expect("V-I1 garantit l'existence du label latin pour tout (slug, from)")
 }
 
-// ---------------------------------------------------------------------------
 // LabelTable
-// ---------------------------------------------------------------------------
 //
 // Clé   : (FeastID, from, to, lang)
 // Valeur : ResolvedLabel (fallback latin déjà appliqué)

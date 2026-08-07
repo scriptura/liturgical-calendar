@@ -8,3 +8,7 @@ history:
   - precedence: 3
     nature: sollemnitas
     color: albus
+    transfers:
+      - collides:
+        - sacratissimi_cordis_iesu
+        offset: -1

@@ -5,11 +5,8 @@ use crate::error::{ForgeError, ParseError};
 use crate::parsing::{parse_feast_from_yaml, validate_slug};
 use crate::registry::{FeastRegistry, Scope};
 
-// ---------------------------------------------------------------------------
-// ingest_scope_dir — un scope (temporale/ + sanctorale/)
-// INV-FORGE-1 : collecter → trier lex → ingérer
-// ---------------------------------------------------------------------------
-
+/// ingest_scope_dir — un scope (temporale/ + sanctorale/)
+/// INV-FORGE-1 : collecter → trier lex → ingérer
 fn ingest_scope_dir(
     scope_dir: &Path,
     scope: Scope,
@@ -70,10 +67,7 @@ fn collect_yaml_recursive(dir: &Path, out: &mut Vec<std::path::PathBuf>) -> Resu
     Ok(())
 }
 
-// ---------------------------------------------------------------------------
-// ingest_corpus — point d'entrée public
-// ---------------------------------------------------------------------------
-
+/// ingest_corpus — point d'entrée public
 pub fn ingest_corpus(data_dir: &Path) -> Result<FeastRegistry, ForgeError> {
     let mut registry = FeastRegistry::new();
 
@@ -198,7 +192,7 @@ fn scope_from_path(scope_path: &str) -> Scope {
     }
 }
 
-// Helpers extraits pour éviter la répétition
+/// Helpers extraits pour éviter la répétition
 fn sorted_subdirs(dir: &Path) -> Result<Vec<std::path::PathBuf>, ForgeError> {
     let mut dirs: Vec<_> = fs::read_dir(dir)
         .map_err(ForgeError::Io)?
@@ -217,10 +211,7 @@ fn dir_name(path: &Path) -> String {
         .to_string()
 }
 
-// ---------------------------------------------------------------------------
-// V-T2 — vérification post-ingestion
-// ---------------------------------------------------------------------------
-
+/// V-T2 — vérification post-ingestion
 fn validate_collides_targets(registry: &FeastRegistry) -> Result<(), ForgeError> {
     for feast in registry.iter() {
         for entry in &feast.history {

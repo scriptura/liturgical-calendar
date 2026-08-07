@@ -95,7 +95,7 @@ struct YamlMobile {
 struct YamlTransfer {
     #[serde(deserialize_with = "deserialize_collides")]
     collides: Vec<String>,
-    offset: Option<u32>,
+    offset: Option<i32>,
     date: Option<YamlDate>,
     mobile: Option<YamlMobileDst>,
 }
@@ -448,9 +448,9 @@ fn parse_transfers(
         }
 
         let target = if let Some(offset) = t.offset {
-            // V-T4 — offset ≥ 1 (u32, seule valeur invalide = 0)
+            // V-T4 — offset non nul (seule valeur strictement invalide = 0)
             if offset == 0 {
-                return Err(ParseError::TransferOffsetNotPositive {
+                return Err(ParseError::TransferOffsetZero {
                     slug: slug.to_string(),
                     collides: t.collides.join(", "),
                     offset,
@@ -935,7 +935,7 @@ history:
         let err = parse_feast_from_yaml("test_slug", Scope::Universal, yaml).unwrap_err();
         assert!(matches!(
             err,
-            ForgeError::Parse(ParseError::TransferOffsetNotPositive { offset: 0, .. })
+            ForgeError::Parse(ParseError::TransferOffsetZero { offset: 0, .. })
         ));
     }
 

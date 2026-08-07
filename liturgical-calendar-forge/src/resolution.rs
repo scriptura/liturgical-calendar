@@ -35,10 +35,6 @@ use liturgical_calendar_core::{
     Color as CoreColor, LiturgicalPeriod as CorePeriod, Nature as CoreNature,
 };
 
-// --- Import Registry (Contrat YAML / Ingestion) ---
-// On aliase pour ne pas percuter CorePeriod
-use crate::registry::LiturgicalPeriod as RegistryPeriod;
-
 use crate::{
     canonicalization::{
         CanonicalizedYear, MONTH_STARTS, is_leap_year, resolve_tempus_ordinarium_dispatch,
@@ -46,7 +42,8 @@ use crate::{
     },
     error::ForgeError,
     registry::{
-        FeastDef, FeastRegistry, Scope, Temporality as RegistryTemporality, TransferTarget,
+        FeastDef, FeastRegistry, LiturgicalPeriod as RegistryPeriod, Scope,
+        Temporality as RegistryTemporality, TransferTarget,
     },
 };
 
@@ -548,7 +545,7 @@ pub(crate) fn resolve_year(
                 }
 
                 let doy_dst: u16 = match &rule.target {
-                    TransferTarget::Offset(n) => doy + *n as u16,
+                    TransferTarget::Offset(n) => (doy as i32 + n) as u16,
                     TransferTarget::Date { month, day } => {
                         MONTH_STARTS[*month as usize - 1] + *day as u16 - 1
                     }
@@ -804,6 +801,106 @@ mod tests {
             primary.nature,
             CoreNature::Commemoratio,
             "Invariant brisé : la nature de la mémoire facultative n'a pas muté en Commemoratio."
+        );
+    }
+
+    // ─── Transferts Rétrogrades (Offset i32) ─────────────────────────────────
+
+    #[test]
+    fn test_backward_transfer_passe_3() {
+        use crate::canonicalization::{CanonicalizedYear, SeasonBoundaries};
+        use crate::registry::{
+            FeastDef, FeastHistoryEntry, Scope, Temporality, TransferDef, TransferTarget,
+        };
+        use std::collections::BTreeMap;
+
+        // 1. Initialisation du Registre
+        let mut registry = crate::registry::FeastRegistry::new();
+
+        // Cible (Sacré-Cœur) : DOY fixe = 175
+        let sc_history = FeastHistoryEntry {
+            from: 0,
+            to: u16::MAX,
+            precedence: Some(3),
+            nature: Some(crate::registry::Nature::Sollemnitas),
+            color: Some(crate::registry::Color::Albus),
+            period: None,
+            has_vigil_mass: false,
+            transfers: Vec::new(), // Zéro-allocation à l'initialisation
+        };
+
+        // 2. Assemblage de l'entité avec ses métadonnées
+        let sc_def = FeastDef {
+            slug: "sacratissimi_cordis_iesu".to_string(), // Identifiant textuel
+            id: None,                                     // Index AOT non résolu à ce stade
+            category: 1,
+            class: Some(crate::registry::LiturgicalClass::Lord),
+            scope: Scope::Universal,
+            temporality: Some(Temporality::Fixed { month: 6, day: 24 }),
+            history: vec![sc_history],
+        };
+        registry.insert(sc_def);
+
+        // Source évincée (Jean-Baptiste) : DOY fixe = 175, Transfert = -1
+        let jb_history = FeastHistoryEntry {
+            from: 0,
+            to: u16::MAX,
+            precedence: Some(3),
+            nature: Some(crate::registry::Nature::Sollemnitas),
+            color: Some(crate::registry::Color::Albus),
+            period: None,
+            has_vigil_mass: false,
+            transfers: vec![TransferDef {
+                collides: vec!["sacratissimi_cordis_iesu".to_string()],
+                target: TransferTarget::Offset(-1),
+            }],
+        };
+
+        // 2. Assemblage de l'entité avec ses métadonnées
+        let jb_def = FeastDef {
+            slug: "nativitas_ioannis_baptistae".to_string(),
+            id: None,
+            category: 1,
+            class: Some(crate::registry::LiturgicalClass::Saint),
+            scope: Scope::Universal,
+            temporality: Some(Temporality::Fixed { month: 6, day: 24 }),
+            history: vec![jb_history],
+        };
+        registry.insert(jb_def);
+
+        // 2. Mocking CanonicalizedYear et FeastIdMap
+        let canonicalized = CanonicalizedYear {
+            year: 2022,
+            anchors: BTreeMap::new(),
+            pre_resolved_transfers: BTreeMap::new(),
+            season_boundaries: SeasonBoundaries::compute(2022),
+        };
+
+        let mut feast_ids = BTreeMap::new();
+        feast_ids.insert("sacratissimi_cordis_iesu".to_string(), 101);
+        feast_ids.insert("nativitas_ioannis_baptistae".to_string(), 102);
+
+        // 3. Exécution de la fonction cible
+        let result = crate::resolution::resolve_year(canonicalized, &registry, &feast_ids)
+            .expect("La résolution AOT doit réussir sans erreur de bornes");
+
+        // 4. Assertions (Passe 3 : validation du vecteur retrograde_inserts)
+        let day_174 = result
+            .days
+            .get(&174)
+            .expect("DOY 174 (23 juin) doit être instancié");
+        assert_eq!(
+            day_174.primary.slug, "nativitas_ioannis_baptistae",
+            "Invariant brisé : Jean-Baptiste n'a pas été inséré rétrogradement au DOY 174"
+        );
+
+        let day_175 = result
+            .days
+            .get(&175)
+            .expect("DOY 175 (24 juin) doit être instancié");
+        assert_eq!(
+            day_175.primary.slug, "sacratissimi_cordis_iesu",
+            "Invariant brisé : Le Sacré-Cœur doit dominer le DOY 175"
         );
     }
 }

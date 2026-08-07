@@ -87,7 +87,7 @@ pub enum Temporality {
 #[derive(Debug, Clone)]
 pub enum TransferTarget {
     /// Décalage avant fixe (≥ 1 jours)
-    Offset(u32),
+    Offset(i32),
     /// Date fixe absolue
     Date { month: u8, day: u8 },
     /// Cible mobile (ancre primitive uniquement, offset signé admis)
