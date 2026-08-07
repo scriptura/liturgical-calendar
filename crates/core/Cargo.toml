@@ -1,7 +1,7 @@
 [package]
 name = "liturgical-calendar-core"
-version = "0.3.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 rust-version = "1.97.0"
 description = "Lightning-fast, no_std, no_alloc runtime for the Catholic liturgical calendar (Novus Ordo, 1969–2399). Provides O(1) read access to pre-compiled `.kald` binary tables via a C-compatible FFI."
 license = "MIT OR Apache-2.0"

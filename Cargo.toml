@@ -3,6 +3,10 @@ members = ["crates/*", "bindings/*"]
 default-members = ["crates/core", "crates/forge", "crates/liturgical-calendar"]
 resolver = "2"
 
+[workspace.package]
+version = "0.3.0"
+edition = "2024"
+
 [workspace.dependencies]
 liturgical-calendar-core = { version = "0.3.0", path = "crates/core" }
 liturgical-calendar-forge = { version = "0.3.0", path = "crates/forge" }
