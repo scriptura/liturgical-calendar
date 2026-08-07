@@ -15,3 +15,9 @@ crate-type = ["cdylib"]
 
 [dependencies]
 liturgical-calendar-core.workspace = true
+
+[profile.release]
+panic = "abort"
+
+[profile.dev]
+panic = "abort"
