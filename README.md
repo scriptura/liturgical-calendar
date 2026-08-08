@@ -158,14 +158,14 @@ uint8_t precedence = feast.flags & 0x000F;
 
 ```
 liturgical-calendar/
-├── liturgical-calendar-core/     ← Engine (no_std, no_alloc, FFI C)
+├── core/                         ← Engine (no_std, no_alloc, FFI C)
 │   └── src/
 │       ├── entry.rs              ← TimelineEntry, FeastEntry, LAYOUT_DISCRIMINANT
 │       ├── ffi.rs                ← kal_read_entry, kal_read_feast, kal_validate_header, …
 │       ├── header.rs             ← validation .kald (fast + checksum)
 │       ├── lits_provider.rs      ← LitsProvider (zero-copy)
 │       └── types.rs              ← Precedence, Nature, Color, LiturgicalPeriod
-├── liturgical-calendar-forge/    ← Compilateur YAML → binaire
+├── forge/                        ← Compilateur YAML → binaire
 │   └── src/
 │       ├── main.rs               ← CLI kal-forge
 │       ├── bin/kal_read.rs       ← CLI kal-read
