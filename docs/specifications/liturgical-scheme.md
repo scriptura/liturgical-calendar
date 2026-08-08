@@ -139,7 +139,7 @@ history:
     has_vigil_mass: <bool> # optionnel, défaut false
     transfers:           # optionnel, scoped à [from, to] — voir §2.4
       - collides: <slug>
-        offset: <u32 ≥ 1>   # OU date: OU mobile: — mutuellement exclusifs
+        offset: <i32 ≠ 0>   # OU date: OU mobile: — mutuellement exclusifs
 ```
 
 > **Surcharge partielle :** un fichier de scope national/diocésain peut omettre `date`/`mobile` si la temporalité est héritée du scope universel.
@@ -197,24 +197,27 @@ history:
     nature: sollemnitas
     color: albus
     transfers:
-      - collides: dominica_in_palmis     # collision → cible fixe
+      - collides: sacratissimi_cordis_iesu   # collision → offset rétrograde (anticipation)
+        offset: -1
+      - collides: dominica_in_palmis         # collision → cible fixe
         date:
           month: 3
           day: 15
       - collides: feria_ii_hebdomadae_sanctae  # collision → offset avant
         offset: 2
-      - collides: nativitas_domini       # collision → cible mobile
+      - collides: nativitas_domini           # collision → cible mobile
         mobile:
           anchor: pascha
           offset: -8
+
 ```
 
-| Clé        | Type               | Sémantique                                                     |
-|------------|--------------------|----------------------------------------------------------------|
-| `collides` | slug (String)      | Fête dont la présence sur le même DOY déclenche le transfert   |
-| `offset`   | u32 ≥ 1            | Décalage en jours **vers l'avant** depuis le DOY de collision  |
-| `date`     | `{month, day}`     | Date fixe de repli                                             |
-| `mobile`   | `{anchor, offset}` | Cible calculée depuis une ancre primitive — offset signé admis |
+| Clé | Type | Sémantique |
+| --- | --- | --- |
+| `collides` | slug (String) | Fête dont la présence sur le même DOY déclenche le transfert |
+| `offset` | entier signé (i32) | Décalage algébrique en jours depuis le DOY de collision (positif = postposition, négatif = anticipation/report rétrograde). |
+| `date` | `{month, day}` | Date fixe de repli |
+| `mobile` | `{anchor, offset}` | Cible calculée depuis une ancre primitive — offset signé admis |
 
 `offset`, `date` et `mobile` sont mutuellement exclusifs (V-T1). `collides` doit référencer un slug du FeastRegistry (V-T2).
 
@@ -512,7 +515,7 @@ Toute violation est fatale. Codes de validation par groupe :
 - **V-T1** — Exactement une option parmi `offset`, `date`, `mobile`. → `ParseError::TransferAmbiguous`, `TransferEmpty`
 - **V-T2** — `collides` ∈ slugs du FeastRegistry. → `ParseError::UnknownCollidesTarget`
 - **V-T3** — `collides` unique au sein d'un même bloc `transfers`. → `ParseError::TransferDuplicateCollides`
-- **V-T4** — `offset` (direct) ≥ 1. → `ParseError::TransferOffsetNotPositive`
+- **V-T4** — `offset` (direct) ≠ 0. → `ParseError::TransferOffsetIsZero`
 - **V-T5** — `mobile.anchor` ∈ ancres primitives (hors `tempus_ordinarium`). → `ParseError::TransferMobileInvalidAnchor`
 
 ### Groupe F — i18n (V-I1, V-I2)

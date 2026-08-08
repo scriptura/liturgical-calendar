@@ -8,7 +8,7 @@ history:
   - precedence: 3
     nature: sollemnitas
     color: albus
-    transfers:
+    transfers: # Dicastère pour le culte divin et la discipline des sacrements, Notitiae-597-NS-005-2020, RESPONSUM AD DUBIA DE CALENDARIO LITURGICO EXARANDO PRO ANNO 2022, § C, pp. 246-247.
       - collides:
         - sacratissimi_cordis_iesu
         offset: -1
