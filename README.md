@@ -158,28 +158,29 @@ uint8_t precedence = feast.flags & 0x000F;
 
 ```
 liturgical-calendar/
-├── core/                         ← Engine (no_std, no_alloc, FFI C)
-│   └── src/
-│       ├── entry.rs              ← TimelineEntry, FeastEntry, LAYOUT_DISCRIMINANT
-│       ├── ffi.rs                ← kal_read_entry, kal_read_feast, kal_validate_header, …
-│       ├── header.rs             ← validation .kald (fast + checksum)
-│       ├── lits_provider.rs      ← LitsProvider (zero-copy)
-│       └── types.rs              ← Precedence, Nature, Color, LiturgicalPeriod
-├── forge/                        ← Compilateur YAML → binaire
-│   └── src/
-│       ├── main.rs               ← CLI kal-forge
-│       ├── bin/kal_read.rs       ← CLI kal-read
-│       ├── parsing.rs            ← ingestion YAML, FeastRegistry
-│       ├── canonicalization.rs   ← Pâques, ancres, DOY
-│       ├── resolution.rs         ← conflit de préséance, transfers
-│       ├── materialization.rs    ← FeastRegistryBuilder, TimelineEntry, Secondary Pool
-│       ├── packing.rs            ← sérialisation .kald (2 passes AOT)
-│       ├── i18n.rs               ← DictStore, LabelTable, fallback latin
-│       ├── lits_writer.rs        ← sérialisation .lits
-│       ├── lock.rs               ← feast_registry.lock
-│       └── variant_lock.rs       ← variant_registry.lock
-├── corpus/                       ← Source de vérité liturgique
-└── artifacts/                    ← Artefacts compilés (ignorés par Git)
+├── crates/
+│   ├── core/                         ← Engine (no_std, no_alloc, FFI C)
+│   │   └── src/
+│   │       ├── entry.rs              ← TimelineEntry, FeastEntry, LAYOUT_DISCRIMINANT
+│   │       ├── ffi.rs                ← kal_read_entry, kal_read_feast, kal_validate_header, …
+│   │       ├── header.rs             ← validation .kald (fast + checksum)
+│   │       ├── lits_provider.rs      ← LitsProvider (zero-copy)
+│   │       └── types.rs              ← Precedence, Nature, Color, LiturgicalPeriod
+│   └── forge/                        ← Compilateur YAML → binaire
+│       └── src/
+│           ├── main.rs               ← CLI kal-forge
+│           ├── bin/kal_read.rs       ← CLI kal-read
+│           ├── parsing.rs            ← ingestion YAML, FeastRegistry
+│           ├── canonicalization.rs   ← Pâques, ancres, DOY
+│           ├── resolution.rs         ← conflit de préséance, transfers
+│           ├── materialization.rs    ← FeastRegistryBuilder, TimelineEntry, Secondary Pool
+│           ├── packing.rs            ← sérialisation .kald (2 passes AOT)
+│           ├── i18n.rs               ← DictStore, LabelTable, fallback latin
+│           ├── lits_writer.rs        ← sérialisation .lits
+│           ├── lock.rs               ← feast_registry.lock
+│           └── variant_lock.rs       ← variant_registry.lock
+├── corpus/                           ← Source de vérité liturgique
+└── artifacts/                        ← Artefacts compilés (ignorés par Git)
 ```
 
 ## Documentation
