@@ -12,12 +12,8 @@ categories = ["wasm"]
 
 [lib]
 crate-type = ["cdylib"]
+test = false
+doctest = false
 
 [dependencies]
 liturgical-calendar-core.workspace = true
-
-[profile.release]
-panic = "abort"
-
-[profile.dev]
-panic = "abort"
