@@ -1,7 +1,7 @@
 [package]
 name = "liturgical-calendar-forge"
-version = "0.3.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 rust-version = "1.97.0"
 description = "Ahead-of-time compiler for the Catholic liturgical calendar. Ingests a YAML corpus of feasts, precedence, and transfer rules, resolves all conflicts, and emits pre-validated binary artifacts (`.kald` / `.lits`) for zero-runtime-cost deployment."
 default-run = "kal-forge"
