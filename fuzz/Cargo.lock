@@ -120,14 +120,14 @@ dependencies = [
 
 [[package]]
 name = "liturgical-calendar-core"
-version = "0.1.2"
+version = "0.5.0"
 dependencies = [
  "sha2",
 ]
 
 [[package]]
 name = "liturgical-calendar-fuzz"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "libfuzzer-sys",
  "liturgical-calendar-core",

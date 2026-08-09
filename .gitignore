@@ -8,6 +8,11 @@ artifacts/**/*.kald
 artifacts/*.lits
 artifacts/**/*.lits
 
+# Fuzz corpus and artifacts (only under fuzz/)
+fuzz/target/
+fuzz/corpus/
+fuzz/artifacts/
+
 # --- COUCHE 2 : INFRASTRUCTURE & SECRETS ---
 # Ne jamais versionner les accès à PostgreSQL
 .env

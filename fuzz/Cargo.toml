@@ -1,8 +1,8 @@
 [package]
 name = "liturgical-calendar-fuzz"
-version = "0.0.0"
+version = "0.1.0"
 publish = false
-edition = "2021"
+edition = "2024"
 
 # Le crate fuzz n'est pas un membre du workspace racine.
 # Il est invoqué exclusivement via `cargo fuzz run <target>`.
@@ -11,7 +11,7 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-liturgical-calendar-core = { path = "../liturgical-calendar-core" }
+liturgical-calendar-core = { path = "../crates/core" }
 
 # Chaque cible fuzz est déclarée ici.
 # `cargo fuzz init` génère ce bloc automatiquement ; on le fournit
