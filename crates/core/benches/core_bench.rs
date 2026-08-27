@@ -147,6 +147,7 @@ fn kald_full() -> &'static [u8] {
                         secondary_offset: 0,
                         occurrence_flags: (i % 3) as u8, // 0, 1, 2 — simule vesperae/vigilia
                         secondary_count: 0,
+                        liturgical_week: 0,
                         _reserved: 0,
                     },
                 )
@@ -167,6 +168,7 @@ fn kald_with_secondary() -> &'static [u8] {
             secondary_offset: 0,
             occurrence_flags: 0,
             secondary_count: 2,
+            liturgical_week: 0,
             _reserved: 0,
         };
         // Secondary Pool : registry_index 2 et 3 (simulés, pas dans le registre — OK
