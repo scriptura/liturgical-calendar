@@ -185,8 +185,8 @@ liturgical-calendar/
 
 ## Documentation
 
-- [`docs/liturgical-scheme.md`](docs/liturgical-scheme.md) — Contrat de données YAML (format corpus + i18n)
-- [`docs/kal-forge-guide.md`](docs/kal-forge-guide.md) — Mode d'emploi `kal-forge` et `kal-read`
+- [`docs/liturgical-scheme.md`](docs/specifications/liturgical-scheme.md) — Contrat de données YAML (format corpus + i18n)
+- [`docs/kal-forge-guide.md`](docs/cmd/kal-forge-guide.md) — Mode d'emploi `kal-forge` et `kal-read`
 - [`docs/adr/`](docs/adr/) — Architecture Decision Records
 
 ## Couverture Temporelle
