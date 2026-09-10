@@ -89,6 +89,14 @@ jobs:
         if: "!matrix.cross && !matrix.wasm"
         run: cargo test -p liturgical-calendar-core --target ${{ matrix.target }}
 
+      - name: Bench Core (validation d'exécution — natif)
+        if: "!matrix.cross && !matrix.wasm"
+        env:
+          # Contraint Divan à un échantillonnage minimal pour valider l'exécution
+          # sans gaspiller de cycles CPU en CI.
+          DIVAN_MAX_TIME: 1
+        run: cargo bench -p liturgical-calendar-core --target ${{ matrix.target }}
+
       - name: Test Forge (natif — inclut full_range.rs)
         if: "!matrix.cross && !matrix.wasm"
         run: cargo test -p liturgical-calendar-forge --target ${{ matrix.target }}

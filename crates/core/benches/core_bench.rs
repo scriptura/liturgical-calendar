@@ -33,7 +33,8 @@ fn encode_entry(e: &TimelineEntry) -> [u8; 8] {
     b[2..4].copy_from_slice(&e.secondary_offset.to_le_bytes());
     b[4] = e.occurrence_flags;
     b[5] = e.secondary_count;
-    b[6..8].copy_from_slice(&e._reserved.to_le_bytes());
+    b[6] = e.liturgical_week; // Projection v6
+    b[7] = e._reserved; // Scalaire u8, copie directe
     b
 }
 
