@@ -1,3 +1,5 @@
+<img src=".github/assets/banner.webp" alt="Logo de Marius, moteur de projection réactive" width="1376" height="768" style="width: 100%">
+
 # Liturgical Calendar
 
 ![Architecture: ECS / DOD](https://img.shields.io/badge/Architecture-ECS_%2F_DOD-blue?style=for-the-badge)
