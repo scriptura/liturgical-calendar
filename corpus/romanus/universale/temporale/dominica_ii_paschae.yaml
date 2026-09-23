@@ -7,12 +7,12 @@ mobile:
 history:
   - from: 1969
     precedence: 2
-    nature: feria
+    nature: dominica
     color: albus
     period: tempus_paschale
     to: 2000
   - from: 2001 # Dimanche de la Divine Miséricorde, Décret de la Congrégation pour le Culte Divin, 5 mai 2000
     precedence: 2
-    nature: feria
+    nature: dominica
     color: albus
     period: tempus_paschale
