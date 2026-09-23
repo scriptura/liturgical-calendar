@@ -1,4 +1,4 @@
-<img src=".github/assets/banner.jpg" alt="Logo de Marius, moteur de projection réactive" width="1376" height="800" style="width: 100%">
+<img src=".github/assets/banner.jpg" alt="Logo de Marius, moteur de projection réactive" width="1376" height="768" style="width: 100%">
 
 # Liturgical Calendar
 
