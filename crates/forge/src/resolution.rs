@@ -264,14 +264,37 @@ fn feast_doy(feast_def: &FeastDef, anchors: &BTreeMap<String, u16>, year: u16) -
         }
         RegistryTemporality::Mobile { anchor, offset } => {
             let anchor_doy = *anchors.get(anchor.as_str())? as i32;
-            let mut doy = anchor_doy + offset;
-            if !is_leap_year(year) {
-                if anchor_doy >= 59 && doy < 59 {
-                    doy -= 1;
-                } else if anchor_doy < 59 && doy >= 59 {
-                    doy += 1;
-                }
-            }
+
+            let doy = if is_leap_year(year) {
+                anchor_doy + offset
+            } else {
+                // Les années communes utilisent un pseudo-DOY avec le slot 59
+                // réservé au 29 février. Une translation mobile doit donc être
+                // effectuée dans le référentiel réel continu, sans trou, puis
+                // reprojetée vers le pseudo-DOY.
+                let real_anchor = if anchor_doy >= 60 {
+                    anchor_doy - 1
+                } else {
+                    anchor_doy
+                };
+                let real_doy = real_anchor + offset;
+
+                let doy = if real_doy >= 59 {
+                    // Le slot réel 59 (29 février) est réinséré dans le
+                    // pseudo-DOY en décalant tout ce qui suit vers +1.
+                    real_doy + 1
+                } else {
+                    real_doy
+                };
+
+                debug_assert!(
+                    doy != 59,
+                    "Invariant violé : attribution sur le slot 59 interdit en année commune (year={year})"
+                );
+
+                doy
+            };
+
             (0..=365).contains(&doy).then_some(doy as u16)
         }
         RegistryTemporality::Ordinal { ordinal } => {
@@ -363,6 +386,10 @@ pub(crate) fn resolve_year(
             None => continue,
         };
 
+        // Dernier filet de sécurité : le slot 59 est le 29 février et
+        // n'existe pas en année commune. Une fête mobile correctement résolue
+        // par `feast_doy` ne peut pas l'atteindre ; ce garde protège néanmoins
+        // le pipeline contre toute date illégale en amont.
         if !is_leap && doy == 59 {
             continue;
         }
