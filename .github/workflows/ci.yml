@@ -45,11 +45,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      # ── Toolchain Rust stable + cible demandée ───────────────────────────
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@nightly
+      # ── Toolchain Rust 1.100.0 + cible demandée ──────────────────────────
+      - name: Install Rust 1.100
+        uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly
+          toolchain: 1.100.0
           targets: ${{ matrix.target }}
           components: clippy
 
@@ -59,7 +59,7 @@ jobs:
         with:
           key: ${{ matrix.target }}
 
-      # ── Outillage spécifique par cible ──────────────────────────────────────
+      # ── Outillage spécifique par cible ──────────────────────────────────
       - name: Install cross (aarch64)
         if: matrix.cross
         uses: taiki-e/install-action@v2
@@ -70,7 +70,7 @@ jobs:
         if: matrix.wasm
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
-      # ── Build liturgical-calendar-core ──────────────────────────────────────
+      # ── Build liturgical-calendar-core ──────────────────────────────────
       - name: Build Core (natif)
         if: "!matrix.cross && !matrix.wasm"
         run: cargo build -p liturgical-calendar-core --target ${{ matrix.target }}
@@ -83,7 +83,7 @@ jobs:
         if: matrix.wasm
         run: cargo build -p liturgical-calendar-core --target ${{ matrix.target }}
 
-      # ── Tests unitaires + intégration ───────────────────────────────────────────
+      # ── Tests unitaires + intégration ───────────────────────────────────
       # Les tests Forge sont exécutés uniquement en natif (pas de cross, pas de wasm).
       - name: Test Core (natif)
         if: "!matrix.cross && !matrix.wasm"
@@ -101,14 +101,14 @@ jobs:
         if: "!matrix.cross && !matrix.wasm"
         run: cargo test -p liturgical-calendar-forge --target ${{ matrix.target }}
 
-      # ── Clippy — zéro warning requis (RUSTFLAGS="-D warnings" est hérité) ───────
+      # ── Clippy — zéro warning requis (RUSTFLAGS="-D warnings" est hérité) ──
       - name: Clippy Core + Forge
         if: "!matrix.cross && !matrix.wasm"
         run: |
           cargo clippy -p liturgical-calendar-core -- -D warnings
           cargo clippy -p liturgical-calendar-forge -- -D warnings
 
-  # ── Job séparé : déterminisme SHA-256 cross-platform ────────────────────────────
+  # ── Job séparé : déterminisme SHA-256 cross-platform ────────────────────
   # Dépend de la réussite du job `test` sur toutes les cibles.
   sha256-cross-platform:
     name: SHA-256 — déterminisme cross-platform
@@ -118,17 +118,18 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@nightly
+      # ── Toolchain Rust 1.100.0 ──────────────────────────────────────────
+      - name: Install Rust 1.100
+        uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly # ou votre version spécifique
-          targets: ${{ matrix.target }}
+          toolchain: 1.100.0
+          targets: x86_64-unknown-linux-gnu
           components: clippy
 
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
 
-      # ── Exécute le test `full_range_deterministic` défini dans full_range.rs. ───────
+      # ── Exécute le test `full_range_deterministic` défini dans full_range.rs. ──
       # Ce test compare les octets 24–55 (SHA-256 header) entre deux builds
       # successifs — il est moins coûteux et plus explicite qu'un sha256sum shell.
       - name: Vérifier déterminisme via full_range_deterministic
@@ -137,25 +138,29 @@ jobs:
             --test full_range \
             -- full_range_deterministic --exact --nocapture
 
-  # ── Job optionnel : fuzzing (smoke test) ──────────────────────────────────────────
+  # ── Job optionnel : fuzzing (smoke test) ─────────────────────────────────
   # Désactivé sur PR pour limiter la durée ; activé sur push main.
   # Nécessite nightly + cargo-fuzz (libFuzzer est lié à LLVM/clang).
   fuzz-smoke:
     name: Fuzz smoke — 1 000 000 inputs
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    env:
+      # Force Nightly malgré le rust-toolchain.toml racine.
+      RUSTUP_TOOLCHAIN: nightly
 
     steps:
       - uses: actions/checkout@v6
 
-      - name: Install Rust nightly (requis par cargo-fuzz / libFuzzer)
+      # ── Toolchain Rust Nightly (requis par cargo-fuzz / libFuzzer) ────────
+      - name: Install Rust nightly
         uses: dtolnay/rust-toolchain@nightly
         with:
-          toolchain: nightly # ou votre version spécifique
-          targets: ${{ matrix.target }}
+          toolchain: nightly
+          targets: x86_64-unknown-linux-gnu
           components: clippy
 
-      # ── Cache isolé : namespace distinct pour éviter toute pollution ─────────────────────
+      # ── Cache isolé : namespace distinct pour éviter toute pollution ─────
       # par un build.target musl ou aarch64 issu des autres jobs.
       - name: Rust Cache (fuzz)
         uses: Swatinem/rust-cache@v2
@@ -167,7 +172,7 @@ jobs:
         with:
           tool: cargo-fuzz
 
-      # ── --target x86_64-unknown-linux-gnu explicite : force la liaison dynamique ─────────
+      # ── --target x86_64-unknown-linux-gnu explicite : force la liaison dynamique ──
       # (GNU libc) requise par ASAN, quelle que soit la valeur de build.target
       # dans .cargo/config.toml du dépôt.
       # Chaque cible est un step indépendant : un crash n'interrompt pas les suivants.

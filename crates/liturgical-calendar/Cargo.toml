@@ -2,7 +2,7 @@
 name = "liturgical-calendar"
 version.workspace = true
 edition.workspace = true
-rust-version = "1.97.0"
+rust-version.workspace = true
 description = "Liturgical calendar engine for the Catholic Novus Ordo — runtime facade"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/scriptura/liturgical-calendar"

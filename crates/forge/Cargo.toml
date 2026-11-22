@@ -2,7 +2,7 @@
 name = "liturgical-calendar-forge"
 version.workspace = true
 edition.workspace = true
-rust-version = "1.97.0"
+rust-version.workspace = true
 description = "Ahead-of-time compiler for the Catholic liturgical calendar. Ingests a YAML corpus of feasts, precedence, and transfer rules, resolves all conflicts, and emits pre-validated binary artifacts (`.kald` / `.lits`) for zero-runtime-cost deployment."
 default-run = "kal-forge"
 license = "MIT OR Apache-2.0"
@@ -29,7 +29,3 @@ liturgical-calendar-core.workspace = true
 
 [features]
 std = []
-gen-headers = ["cbindgen"]
-
-[build-dependencies]
-cbindgen = { version = "0.26", optional = true }
