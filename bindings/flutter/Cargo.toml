@@ -4,9 +4,9 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 description = "Flutter bindings for the Liturgical Calendar library, providing liturgical computations for mobile and desktop applications."
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/scriptura/liturgical-calendar"
-readme = "README.md"
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
 keywords = ["liturgical", "calendar", "dart", "ffi", "bindings"]
 categories = ["api-bindings"]
 

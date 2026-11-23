@@ -4,9 +4,9 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 description = "WASM bindings for the liturgical-calendar engine. Provides a zero-copy, no_std interface to query the Roman Catholic liturgical calendar (1969–2399) from .kald and .lits binary files, compiled to WebAssembly."
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/scriptura/liturgical-calendar"
-readme = "README.md"
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
 keywords = ["liturgical", "calendar", "web", "ffi", "bindings"]
 categories = ["wasm"]
 
