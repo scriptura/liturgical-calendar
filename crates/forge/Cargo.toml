@@ -3,11 +3,11 @@ name = "liturgical-calendar-forge"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+authors.workspace = true
 description = "Ahead-of-time compiler for the Catholic liturgical calendar. Ingests a YAML corpus of feasts, precedence, and transfer rules, resolves all conflicts, and emits pre-validated binary artifacts (`.kald` / `.lits`) for zero-runtime-cost deployment."
 default-run = "kal-forge"
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/scriptura/liturgical-calendar"
-readme = "README.md"
+license.workspace = true
+repository.workspace = true
 keywords = ["liturgical", "calendar", "yaml", "compiler", "aot"]
 categories = ["compilers", "command-line-utilities", "parser-implementations"]
 

@@ -1,12 +1,15 @@
 [workspace]
 members = ["crates/*", "bindings/*"]
 default-members = ["crates/core", "crates/forge", "crates/liturgical-calendar"]
-resolver = "2"
+resolver = "3"
 
 [workspace.package]
 version = "0.5.2"
 edition = "2024"
 rust-version = "1.100"
+authors = ["Olivier Chavarin"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/scriptura/liturgical-calendar"
 
 [workspace.dependencies]
 liturgical-calendar-core = { version = "0.5.2", path = "crates/core" }
